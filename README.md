@@ -1,55 +1,68 @@
-NexusDB: High-Availability Distributed Key-Value Store 🛡️💾
-📌 Overview
-NexusDB is a distributed, strongly consistent key-value store designed to handle high-availability requirements in modern cloud infrastructures. At its core, NexusDB implements the Raft Consensus Algorithm to ensure that data remains synchronized across multiple nodes, even in the event of partial network failures or server crashes.
+# 🛡️ NexusDB: Distributed Key-Value Store & Raft Overseer
 
-This project serves as a comprehensive study of Distributed Systems, focusing on state machine replication and fault-tolerant architecture.
+> **High-availability storage engine engineered for strong consistency and fault tolerance.**
 
-⚙️ Distributed Architecture
-NexusDB guarantees safety and consistency through a rigorous implementation of the Raft protocol:
+---
 
-1. Leader Election
+### 🚀 Quick Links
+| 🌐 Live Demo | 📂 Repository | 🛠 Build Status |
+| :--- | :--- | :--- |
+| [**Open on Vercel**](https://YOUR-VERCEL-LINK-HERE.vercel.app/) | [**Source Code**](https://github.com/rafael-ibayev/rafael-ibayev-portfolio) | ![Stable](https://img.shields.io/badge/Status-Stable-22c55e) |
 
-Nodes operate in one of three states: Follower, Candidate, or Leader. If a Follower fails to receive a heartbeat within a randomized timeout, it transitions to a Candidate state and initiates a new election term.
+---
 
-2. Log Replication
+## 📖 Overview
+**NexusDB** is not just a database; it is a laboratory for **Distributed Systems**. In a world where servers fail and networks partition, NexusDB maintains a single source of truth using the **Raft Consensus Algorithm**. 
 
-All state changes flow through the Leader. Once an entry is appended to the Leader's log, it is replicated to all Followers.
+The system features **Raft Overseer** — a high-density monitoring dashboard that provides real-time visibility into the cluster's internal state machine.
 
-3. Strong Consistency (Quorum)
+---
 
-NexusDB adheres to the majority rule. A write operation is only considered Committed once it is safely stored on a majority of nodes:
+## ⚙️ Core Engineering Pillars
 
-Q=⌊n/2⌋+1
-This ensures that even if ⌊n/2⌋ nodes fail, the system remains operational and consistent.
+### 1️⃣ Leader Election (Self-Healing)
+The cluster automatically detects node failures. If a leader goes offline, the followers initiate an election term using **Randomized Timeouts** to prevent split-vote scenarios.
+* **States:** `Follower` ➔ `Candidate` ➔ `Leader`
+* **Heartbeats:** Automated RPC pulses to maintain authority.
 
-🛠 Features
-Interactive Cluster Monitor: Real-time visualization of the node topology and current roles (using the Raft Overseer dashboard).
+### 2️⃣ Log Replication (Consistency)
+Every write operation (SET/DELETE) is first recorded in the Leader's log and then synchronized across all Followers. Data is only finalized once it reaches a **Quorum**.
 
-Chaos Engineering Suite: * Node Termination: Manually crash the leader or followers to observe self-healing capabilities.
+### 3️⃣ Safety & Quorum Logic
+NexusDB guarantees that committed data survives even if nearly half the cluster disappears. The safety rule is governed by the majority formula:
+$$Q = \lfloor n/2 \rfloor + 1$$
 
-Network Partitioning: Simulate "Split Brain" scenarios and watch the Quorum logic in action.
+---
 
-Visual Log Stream: Monitor how SET and DELETE operations propagate through the distributed log indices.
+## 🛠 Advanced Features
 
-Performance Telemetry: Real-time metrics on election terms, commit indices, and replication latency.
+### ⚡ Chaos Engineering Suite
+Testing systems when they work is easy; testing them when they break is engineering. 
+* **Node Termination:** Kill any node (including the leader) to trigger sub-second recovery.
+* **Network Partitioning:** Simulate "Split-Brain" scenarios to see how the minority cluster pauses operations for safety.
 
-🚀 Tech Stack
-Frontend: React, TypeScript.
+### 📊 Real-Time Telemetry
+* **Visual Pulse Mapping:** Watch heartbeat RPCs move across the network.
+* **Logical Clock tracking:** Monitor the progression of **Raft Terms** and **Commit Indices**.
+* **Cluster Health:** Dynamic gauges for throughput and replication latency.
 
-Styling: Tailwind CSS (Enterprise Dark Theme).
+---
 
-Animations: Framer Motion (for node communication and state transitions).
+## 💻 Tech Stack
+* **Frontend:** React 18 & TypeScript (Type-safe architecture).
+* **UI/UX:** Tailwind CSS + Shadcn UI (Industrial Enterprise aesthetic).
+* **Logic:** Framed with **Framer Motion** for smooth state transitions.
+* **Deployment:** CI/CD via GitHub Actions & Vercel.
 
-Infrastructure: GitHub CI/CD & Vercel.
+---
 
-👨‍💻 Author
-Rafael Ibayev
+## 👨‍💻 About the Author
+**Rafael Ibayev**
+* **Education:** Computer Science at **ELTE University**, Budapest.
+* **Background:** International STEM Olympiad Gold Medalist.
+* **Focus:** Distributed Systems, Robotics, and High-Performance Backend Engineering.
 
-Computer Science Student @ ELTE University, Budapest.
+---
 
-International STEM Olympiad Gold Medalist.
-
-Passionate about Distributed Systems, AI Safety, and Robotics.
-
-📄 License
-MIT License
+## 📄 License
+This project is licensed under the **MIT License**.
