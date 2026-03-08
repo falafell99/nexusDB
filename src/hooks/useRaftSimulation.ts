@@ -17,6 +17,7 @@ export interface RaftNode {
   term: number;
   log: LogEntry[];
   votedFor: string | null;
+  stressed?: boolean;
 }
 
 export interface HeartbeatPulse {
@@ -29,12 +30,18 @@ export interface HeartbeatPulse {
 
 export interface ClusterEvent {
   id: string;
-  type: "election" | "commit" | "nodeDown" | "nodeUp" | "write" | "partition" | "reconcile";
+  type: "election" | "commit" | "nodeDown" | "nodeUp" | "write" | "partition" | "reconcile" | "chaos";
   message: string;
   timestamp: number;
 }
 
 export type PartitionGroup = "majority" | "minority";
+
+export interface ClusterSnapshot {
+  nodes: RaftNode[];
+  events: ClusterEvent[];
+  timestamp: number;
+}
 
 const NODE_NAMES = ["Node 01", "Node 02", "Node 03", "Node 04", "Node 05"];
 const NODE_IDS = ["a", "b", "c", "d", "e"];
@@ -47,6 +54,7 @@ function createInitialNodes(): RaftNode[] {
     term: 1,
     log: [],
     votedFor: "a",
+    stressed: false,
   }));
 }
 
@@ -66,6 +74,30 @@ export function useRaftSimulation() {
   const [nodeLatencyOffsets, setNodeLatencyOffsets] = useState<Record<string, number>>({});
   const [minorityIds, setMinorityIds] = useState<Set<string>>(new Set(["a", "b"]));
   const [majorityIds, setMajorityIds] = useState<Set<string>>(new Set(["c", "d", "e"]));
+
+  // Chaos mode
+  const [chaosMode, setChaosMode] = useState(false);
+  const chaosModeRef = useRef(false);
+  const chaosIntervalRef = useRef<ReturnType<typeof setInterval>>();
+
+  // Play/Pause
+  const [paused, setPaused] = useState(false);
+  const pausedRef = useRef(false);
+
+  // Time-travel snapshots
+  const [snapshots, setSnapshots] = useState<ClusterSnapshot[]>([]);
+  const [viewingSnapshot, setViewingSnapshot] = useState<number | null>(null);
+  const maxSnapshots = 200;
+
+  // Advanced analytics
+  const [commitsPerSecHistory, setCommitsPerSecHistory] = useState<number[]>(Array(20).fill(0));
+  const [consensusSpeed, setConsensusSpeed] = useState(0);
+  const commitCounterRef = useRef(0);
+  const lastConsensusRef = useRef(0);
+
+  // Storage inspector
+  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+
   const logIndexRef = useRef(0);
   const heartbeatRef = useRef<ReturnType<typeof setInterval>>();
   const metricsRef = useRef<ReturnType<typeof setInterval>>();
@@ -78,6 +110,8 @@ export function useRaftSimulation() {
   useEffect(() => { partitionedRef.current = partitioned; }, [partitioned]);
   useEffect(() => { minorityIdsRef.current = minorityIds; }, [minorityIds]);
   useEffect(() => { majorityIdsRef.current = majorityIds; }, [majorityIds]);
+  useEffect(() => { pausedRef.current = paused; }, [paused]);
+  useEffect(() => { chaosModeRef.current = chaosMode; }, [chaosMode]);
 
   const setPartitionGroups = useCallback((groups: { minority: Set<string>; majority: Set<string> }) => {
     setMinorityIds(groups.minority);
@@ -101,11 +135,38 @@ export function useRaftSimulation() {
     return getPartitionGroup(idA) === getPartitionGroup(idB);
   }, [getPartitionGroup]);
 
+  // Snapshot recording
+  useEffect(() => {
+    const snapInterval = setInterval(() => {
+      if (pausedRef.current) return;
+      setNodes(curr => {
+        setEvents(evts => {
+          setSnapshots(prev => {
+            const snap: ClusterSnapshot = {
+              nodes: curr.map(n => ({ ...n, log: [...n.log] })),
+              events: evts.slice(0, 10),
+              timestamp: Date.now(),
+            };
+            return [...prev, snap].slice(-maxSnapshots);
+          });
+          return evts;
+        });
+        return curr;
+      });
+    }, 500);
+    return () => clearInterval(snapInterval);
+  }, []);
+
+  // Metrics interval
   useEffect(() => {
     metricsRef.current = setInterval(() => {
+      if (pausedRef.current) return;
       const rps = rpsCounterRef.current;
       rpsCounterRef.current = 0;
+      const cps = commitCounterRef.current;
+      commitCounterRef.current = 0;
       setRpsHistory(prev => [...prev.slice(1), rps]);
+      setCommitsPerSecHistory(prev => [...prev.slice(1), cps]);
       setNodes(curr => {
         const alive = curr.filter(n => n.state !== "down").length;
         const health = alive >= 3 ? 100 : Math.round((alive / 3) * 100);
@@ -117,6 +178,7 @@ export function useRaftSimulation() {
   }, []);
 
   const sendHeartbeats = useCallback(() => {
+    if (pausedRef.current) return;
     setNodes(prev => {
       const leaders = prev.filter(n => n.state === "leader");
       if (leaders.length === 0) return prev;
@@ -145,6 +207,7 @@ export function useRaftSimulation() {
   }, [sendHeartbeats, nodeLatencyOffsets]);
 
   const triggerElection = useCallback((groupFilter?: PartitionGroup, excludeId?: string) => {
+    if (pausedRef.current) return;
     setNodes(prev => {
       let alive = prev.filter(n => n.state !== "down" && n.id !== excludeId);
       if (partitionedRef.current && groupFilter) {
@@ -171,6 +234,7 @@ export function useRaftSimulation() {
       const canWin = groupSize >= majority;
       if (canWin) {
         setTimeout(() => {
+          if (pausedRef.current) return;
           setNodes(curr => curr.map(n => {
             if (n.state === "down") return n;
             if (partitionedRef.current && getPartitionGroup(n.id) !== getPartitionGroup(candidate.id)) return n;
@@ -200,7 +264,7 @@ export function useRaftSimulation() {
       if (!node || node.state === "down") return prev;
       const wasLeader = node.state === "leader";
       addEvent("nodeDown", `[${node.name.replace("Node ", "NODE ")}] Heartbeat timeout — node offline`);
-      const updated = prev.map(n => n.id === nodeId ? { ...n, state: "down" as NodeState } : n);
+      const updated = prev.map(n => n.id === nodeId ? { ...n, state: "down" as NodeState, stressed: false } : n);
       if (wasLeader) {
         const group = partitionedRef.current ? getPartitionGroup(nodeId) : undefined;
         setTimeout(() => triggerElection(group, nodeId), 1500);
@@ -215,7 +279,7 @@ export function useRaftSimulation() {
       if (!node || node.state !== "down") return prev;
       const currentTerm = Math.max(...prev.map(n => n.term));
       addEvent("nodeUp", `[${node.name.replace("Node ", "NODE ")}] Node online → FOLLOWER`);
-      return prev.map(n => n.id === nodeId ? { ...n, state: "follower" as NodeState, term: currentTerm } : n);
+      return prev.map(n => n.id === nodeId ? { ...n, state: "follower" as NodeState, term: currentTerm, stressed: false } : n);
     });
   }, [addEvent]);
 
@@ -276,10 +340,12 @@ export function useRaftSimulation() {
   }, [addEvent, triggerElection]);
 
   const writeValue = useCallback((key: string, value: string) => {
+    if (pausedRef.current) return;
     const command = `SET ${key} ${value}`;
     logIndexRef.current += 1;
     const idx = logIndexRef.current;
     rpsCounterRef.current += 1;
+    const writeStart = Date.now();
 
     setNodes(prev => {
       const leader = prev.find(n => n.state === "leader");
@@ -305,11 +371,16 @@ export function useRaftSimulation() {
       rpsCounterRef.current += replicatePulses.length;
 
       setTimeout(() => {
+        if (pausedRef.current) return;
         setNodes(curr => curr.map(n => {
           if (n.state === "down") return n;
           if (partitionedRef.current && !canCommunicate(leader.id, n.id)) return n;
           return { ...n, log: [...n.log, { ...entry, committed: true }].slice(-20) };
         }));
+        commitCounterRef.current += 1;
+        const speed = Date.now() - writeStart;
+        lastConsensusRef.current = speed;
+        setConsensusSpeed(speed);
         addEvent("commit", `[QUORUM] Majority reached for Index ${idx} — COMMITTED: ${command}`);
         setLatencies(l => [...l.slice(1), Math.floor(10 + Math.random() * 20)]);
       }, 800);
@@ -321,22 +392,127 @@ export function useRaftSimulation() {
     });
   }, [addEvent, canCommunicate]);
 
+  // Chaos Monkey
+  const toggleChaos = useCallback(() => {
+    setChaosMode(prev => {
+      const next = !prev;
+      chaosModeRef.current = next;
+      if (next) {
+        addEvent("chaos", "🐒 Chaos Monkey ENABLED — expect random failures");
+      } else {
+        addEvent("chaos", "🐒 Chaos Monkey DISABLED");
+        // Clear all stress
+        setNodes(curr => curr.map(n => ({ ...n, stressed: false })));
+      }
+      return next;
+    });
+  }, [addEvent]);
+
+  useEffect(() => {
+    if (!chaosMode) {
+      if (chaosIntervalRef.current) clearInterval(chaosIntervalRef.current);
+      return;
+    }
+    chaosIntervalRef.current = setInterval(() => {
+      if (pausedRef.current || !chaosModeRef.current) return;
+      const action = Math.random();
+      if (action < 0.4) {
+        // Network flip — latency spike on random node
+        setNodes(curr => {
+          const alive = curr.filter(n => n.state !== "down");
+          if (alive.length === 0) return curr;
+          const target = alive[Math.floor(Math.random() * alive.length)];
+          addEvent("chaos", `🐒 Network Flip — ${target.name} latency spike +200ms`);
+          setNodeLatencyOffsets(prev => ({ ...prev, [target.id]: (prev[target.id] || 0) + 200 }));
+          // Mark stressed
+          const updated = curr.map(n => n.id === target.id ? { ...n, stressed: true } : n);
+          // Auto-recover after 3-5s
+          setTimeout(() => {
+            if (!chaosModeRef.current) return;
+            setNodeLatencyOffsets(prev => {
+              const val = (prev[target.id] || 0) - 200;
+              return { ...prev, [target.id]: Math.max(0, val) };
+            });
+            setNodes(c => c.map(n => n.id === target.id ? { ...n, stressed: false } : n));
+          }, 3000 + Math.random() * 2000);
+          return updated;
+        });
+      } else {
+        // Node sleep — random node goes down for 3-5s
+        setNodes(curr => {
+          const alive = curr.filter(n => n.state !== "down");
+          if (alive.length <= 1) return curr; // keep at least 1
+          const target = alive[Math.floor(Math.random() * alive.length)];
+          addEvent("chaos", `🐒 Node Sleep — ${target.name} unresponsive (3-5s)`);
+          const wasLeader = target.state === "leader";
+          const updated = curr.map(n => n.id === target.id ? { ...n, state: "down" as NodeState, stressed: true } : n);
+          if (wasLeader) {
+            const group = partitionedRef.current ? getPartitionGroup(target.id) : undefined;
+            setTimeout(() => triggerElection(group, target.id), 1500);
+          }
+          // Auto-revive
+          setTimeout(() => {
+            if (!chaosModeRef.current) return;
+            setNodes(c => {
+              const node = c.find(n => n.id === target.id);
+              if (!node || node.state !== "down") return c;
+              const t = Math.max(...c.map(n => n.term));
+              addEvent("chaos", `🐒 ${target.name} recovered from sleep`);
+              return c.map(n => n.id === target.id ? { ...n, state: "follower" as NodeState, term: t, stressed: false } : n);
+            });
+          }, 3000 + Math.random() * 2000);
+          return updated;
+        });
+      }
+    }, 3000 + Math.random() * 3000);
+    return () => {
+      if (chaosIntervalRef.current) clearInterval(chaosIntervalRef.current);
+    };
+  }, [chaosMode, addEvent, getPartitionGroup, triggerElection]);
+
+  // Toggle play/pause
+  const togglePause = useCallback(() => {
+    setPaused(prev => !prev);
+  }, []);
+
+  // View a specific snapshot for time-travel
+  const viewSnapshot = useCallback((index: number | null) => {
+    setViewingSnapshot(index);
+  }, []);
+
   useEffect(() => {
     return () => {
       if (minorityElectionRef.current) clearInterval(minorityElectionRef.current);
     };
   }, []);
 
-  const quorumCount = nodes.filter(n => n.state !== "down").length;
+  // Derived snapshot view
+  const activeSnapshot = viewingSnapshot !== null ? snapshots[viewingSnapshot] : null;
+  const displayNodes = activeSnapshot ? activeSnapshot.nodes : nodes;
+  const displayEvents = activeSnapshot ? activeSnapshot.events : events;
+
+  const quorumCount = displayNodes.filter(n => n.state !== "down").length;
   const quorumReached = quorumCount >= 3;
-  const currentTerm = Math.max(...nodes.map(n => n.term));
+  const currentTerm = Math.max(...displayNodes.map(n => n.term));
 
   return {
-    nodes, pulses, events, partitioned, latencies,
+    nodes: displayNodes, pulses, events: displayEvents, partitioned, latencies,
     rpsHistory, quorumHistory,
     quorumCount, quorumReached, currentTerm,
     killNode, reviveNode, togglePartition, writeValue,
     nodeLatencyOffsets, setNodeLatency,
     minorityIds, majorityIds, setPartitionGroups,
+    // Chaos
+    chaosMode, toggleChaos,
+    // Play/pause
+    paused, togglePause,
+    // Time-travel
+    snapshots, viewingSnapshot, viewSnapshot,
+    // Analytics
+    commitsPerSecHistory, consensusSpeed,
+    // Inspector
+    selectedNodeId, setSelectedNodeId,
+    // Raw nodes for inspector when viewing snapshot
+    rawNodes: nodes,
   };
 }

@@ -6,6 +6,9 @@ import LiveMetrics from "@/components/LiveMetrics";
 import EventLog from "@/components/EventLog";
 import RaftArchitecture from "@/components/RaftArchitecture";
 import ClientConsole from "@/components/ClientConsole";
+import TimeTravel from "@/components/TimeTravel";
+import StorageInspector from "@/components/StorageInspector";
+import AdvancedAnalytics from "@/components/AdvancedAnalytics";
 import { Database } from "lucide-react";
 
 export default function Index() {
@@ -16,14 +19,27 @@ export default function Index() {
     killNode, reviveNode, togglePartition, writeValue,
     nodeLatencyOffsets, setNodeLatency,
     minorityIds, majorityIds, setPartitionGroups,
+    chaosMode, toggleChaos,
+    paused, togglePause,
+    snapshots, viewingSnapshot, viewSnapshot,
+    commitsPerSecHistory, consensusSpeed,
+    selectedNodeId, setSelectedNodeId,
+    rawNodes,
   } = useRaftSimulation();
 
   const handleNodeClick = (id: string) => {
     const node = nodes.find(n => n.id === id);
     if (!node) return;
-    if (node.state === "down") reviveNode(id);
-    else killNode(id);
+    // If already selected, toggle state; otherwise select for inspector
+    if (selectedNodeId === id) {
+      if (node.state === "down") reviveNode(id);
+      else killNode(id);
+    } else {
+      setSelectedNodeId(id);
+    }
   };
+
+  const selectedNode = selectedNodeId ? rawNodes.find(n => n.id === selectedNodeId) : null;
 
   return (
     <div className="min-h-screen bg-background">
@@ -38,6 +54,16 @@ export default function Index() {
             </div>
           </div>
           <div className="flex items-center gap-4">
+            {chaosMode && (
+              <span className="text-[10px] font-mono text-accent border border-accent/40 px-1.5 py-0.5 animate-pulse">
+                🐒 CHAOS
+              </span>
+            )}
+            {paused && (
+              <span className="text-[10px] font-mono text-accent border border-accent/40 px-1.5 py-0.5">
+                PAUSED
+              </span>
+            )}
             <span className="text-[10px] font-mono text-muted-foreground">CLUSTER MONITOR</span>
             <div className={`flex items-center gap-1.5 px-2 py-1 text-[10px] font-mono border ${
               quorumReached
@@ -53,6 +79,15 @@ export default function Index() {
 
       {/* Main Content */}
       <main className="container mx-auto px-4 py-4 space-y-3">
+        {/* Time-Travel Debugger */}
+        <TimeTravel
+          snapshots={snapshots}
+          viewingSnapshot={viewingSnapshot}
+          onViewSnapshot={viewSnapshot}
+          paused={paused}
+          onTogglePause={togglePause}
+        />
+
         {/* Live Metrics Row */}
         <LiveMetrics
           nodes={nodes}
@@ -65,7 +100,7 @@ export default function Index() {
         />
 
         {/* Main Grid */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
+        <div className={`grid grid-cols-1 gap-3 ${selectedNode ? "lg:grid-cols-4" : "lg:grid-cols-3"}`}>
           {/* Topology */}
           <div className="lg:col-span-1">
             <ClusterTopology
@@ -89,6 +124,8 @@ export default function Index() {
               onWrite={writeValue}
               nodeLatencyOffsets={nodeLatencyOffsets}
               onSetNodeLatency={setNodeLatency}
+              chaosMode={chaosMode}
+              onToggleChaos={toggleChaos}
             />
             <RaftLogStream nodes={nodes} />
           </div>
@@ -97,7 +134,23 @@ export default function Index() {
           <div className="lg:col-span-1">
             <EventLog events={events} />
           </div>
+
+          {/* Storage Inspector (conditional 4th column) */}
+          {selectedNode && (
+            <div className="lg:col-span-1">
+              <StorageInspector
+                node={selectedNode}
+                onClose={() => setSelectedNodeId(null)}
+              />
+            </div>
+          )}
         </div>
+
+        {/* Advanced Analytics */}
+        <AdvancedAnalytics
+          commitsPerSecHistory={commitsPerSecHistory}
+          consensusSpeed={consensusSpeed}
+        />
 
         {/* Client Console */}
         <ClientConsole nodes={nodes} onWrite={writeValue} />

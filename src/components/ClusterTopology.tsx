@@ -28,14 +28,12 @@ const STATE_COLORS: Record<string, string> = {
 function drawPartitionLine(ctx: CanvasRenderingContext2D, time: number, lineX: number) {
   const segments = 40;
   const segH = 400 / segments;
-
   ctx.save();
   for (let i = 0; i < segments; i++) {
     const y = i * segH;
     const noise = Math.sin(time * 0.003 + i * 1.7) * 8 + Math.sin(time * 0.007 + i * 3.1) * 4;
     const xOff = lineX + noise;
     const alpha = 0.3 + 0.3 * Math.abs(Math.sin(time * 0.005 + i * 0.5));
-
     for (let j = -6; j <= 6; j++) {
       const px = xOff + j + (Math.random() - 0.5) * 4;
       const py = y + (Math.random() - 0.5) * segH * 0.8;
@@ -43,7 +41,6 @@ function drawPartitionLine(ctx: CanvasRenderingContext2D, time: number, lineX: n
       ctx.fillStyle = `rgba(239, 68, 68, ${pAlpha})`;
       ctx.fillRect(px, py, 1 + Math.random(), 1 + Math.random());
     }
-
     ctx.beginPath();
     ctx.moveTo(xOff - 1, y);
     ctx.lineTo(xOff + 1 + Math.random() * 2, y + segH);
@@ -51,7 +48,6 @@ function drawPartitionLine(ctx: CanvasRenderingContext2D, time: number, lineX: n
     ctx.lineWidth = 1;
     ctx.stroke();
   }
-
   ctx.save();
   ctx.translate(lineX - 2, 200);
   ctx.rotate(-Math.PI / 2);
@@ -60,6 +56,31 @@ function drawPartitionLine(ctx: CanvasRenderingContext2D, time: number, lineX: n
   ctx.textAlign = "center";
   ctx.fillText("NETWORK PARTITION", 0, 0);
   ctx.restore();
+  ctx.restore();
+}
+
+function drawWarningIcon(ctx: CanvasRenderingContext2D, x: number, y: number, time: number) {
+  const blink = 0.5 + 0.5 * Math.sin(time * 0.008);
+  ctx.save();
+  ctx.globalAlpha = blink;
+  // Triangle
+  ctx.beginPath();
+  ctx.moveTo(x, y - 10);
+  ctx.lineTo(x - 8, y + 4);
+  ctx.lineTo(x + 8, y + 4);
+  ctx.closePath();
+  ctx.fillStyle = "rgba(245, 158, 11, 0.7)";
+  ctx.fill();
+  ctx.strokeStyle = "#f59e0b";
+  ctx.lineWidth = 1;
+  ctx.stroke();
+  // Exclamation
+  ctx.fillStyle = "#020202";
+  ctx.font = "bold 9px sans-serif";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText("!", x, y - 1);
+  ctx.globalAlpha = 1;
   ctx.restore();
 }
 
@@ -80,7 +101,6 @@ export default function ClusterTopology({ nodes, pulses, partitioned, onNodeClic
   partitionLineXRef.current = partitionLineX;
   draggingRef.current = dragging;
 
-  // Recalculate partition groups when line moves
   const recalcGroups = useCallback((lineX: number) => {
     if (!onPartitionGroupsChange) return;
     const minority = new Set<string>();
@@ -92,7 +112,6 @@ export default function ClusterTopology({ nodes, pulses, partitioned, onNodeClic
       if (NODE_POSITIONS[i].x < lineX) left.push(id);
       else right.push(id);
     });
-    // Majority = bigger group
     if (left.length >= right.length) {
       left.forEach(id => majority.add(id));
       right.forEach(id => minority.add(id));
@@ -128,10 +147,8 @@ export default function ClusterTopology({ nodes, pulses, partitioned, onNodeClic
           const nodeA = currentNodes[i];
           const nodeB = currentNodes[j];
           const bothAlive = nodeA.state !== "down" && nodeB.state !== "down";
-
           const sameGroup = (a.x < lineX && b.x < lineX) || (a.x >= lineX && b.x >= lineX);
           if (isPartitioned && !sameGroup) continue;
-
           ctx.beginPath();
           ctx.moveTo(a.x, a.y);
           ctx.lineTo(b.x, b.y);
@@ -141,11 +158,8 @@ export default function ClusterTopology({ nodes, pulses, partitioned, onNodeClic
         }
       }
 
-      // Partition visual
       if (isPartitioned) {
         drawPartitionLine(ctx, now, lineX);
-
-        // Draw drag handle hint
         if (!draggingRef.current) {
           ctx.save();
           ctx.fillStyle = "rgba(239, 68, 68, 0.25)";
@@ -165,18 +179,15 @@ export default function ClusterTopology({ nodes, pulses, partitioned, onNodeClic
         const fromIdx = ["a", "b", "c", "d", "e"].indexOf(pulse.from);
         const toIdx = ["a", "b", "c", "d", "e"].indexOf(pulse.to);
         if (fromIdx < 0 || toIdx < 0) return;
-
         const elapsed = now - pulse.timestamp;
         const progress = Math.min(elapsed / 600, 1);
         const from = NODE_POSITIONS[fromIdx];
         const to = NODE_POSITIONS[toIdx];
         const x = from.x + (to.x - from.x) * progress;
         const y = from.y + (to.y - from.y) * progress;
-
         const color = pulse.type === "heartbeat" ? "#94a3b8" :
           pulse.type === "appendEntries" ? "#22c55e" :
           pulse.type === "voteRequest" ? "#f59e0b" : "#94a3b8";
-
         ctx.beginPath();
         ctx.arc(x, y, 2, 0, Math.PI * 2);
         ctx.fillStyle = color;
@@ -221,6 +232,11 @@ export default function ClusterTopology({ nodes, pulses, partitioned, onNodeClic
           node.state === "candidate" ? "CANDIDATE" :
           node.state === "down" ? "DOWN" : "FOLLOWER";
         ctx.fillText(tag, pos.x, pos.y + 47);
+
+        // Warning icon for stressed nodes
+        if (node.stressed) {
+          drawWarningIcon(ctx, pos.x + 22, pos.y - 18, now);
+        }
 
         if (isPartitioned && node.state !== "down") {
           const isMinority = pos.x < lineX
@@ -274,7 +290,6 @@ export default function ClusterTopology({ nodes, pulses, partitioned, onNodeClic
   const handleClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
     if (dragging) return;
     const { x, y } = getCanvasCoords(e);
-
     for (let i = 0; i < 5; i++) {
       const pos = NODE_POSITIONS[i];
       const dx = x - pos.x;
