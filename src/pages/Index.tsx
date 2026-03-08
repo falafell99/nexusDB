@@ -89,6 +89,9 @@ export default function Index() {
           </div>
         </div>
 
+        {/* Client Console */}
+        <ClientConsole nodes={nodes} onWrite={writeValue} />
+
         {/* Architecture */}
         <RaftArchitecture />
       </main>
