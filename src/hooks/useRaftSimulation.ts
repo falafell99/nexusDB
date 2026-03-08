@@ -62,6 +62,7 @@ const makeEventId = () => `evt-${++eventCounter}-${Date.now()}`;
 let pulseCounter = 0;
 const makePulseId = () => `pulse-${++pulseCounter}-${Date.now()}`;
 
+// Raft consensus simulation hook
 export function useRaftSimulation() {
   const [nodes, setNodes] = useState<RaftNode[]>(createInitialNodes);
   const [pulses, setPulses] = useState<HeartbeatPulse[]>([]);
