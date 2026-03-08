@@ -1,73 +1,54 @@
-# Welcome to your Lovable project
+# ◼️ CORE_SYS_ALGORITHMS
 
-## Project info
+**Status:** `Active` | **Target:** `x86_64 / ARM64` | **CI/CD:** `Strict`
 
-**URL**: https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID
+A high-performance repository containing low-level implementations of foundational algorithms, distributed system primitives, and mathematical models. Engineered for low-latency execution, memory safety, and absolute mathematical rigor.
 
-## How can I edit this code?
+## ⚙️ Core Stack
+- **Systems & Performance:** C++, C
+- **Prototyping & ML Logic:** Python
+- **Build & Tooling:** CMake, Make, GCC/Clang
 
-There are several ways of editing your application.
+## 🏗 Architecture & Modules
 
-**Use Lovable**
+### `1. math_core/` (C / C++)
+Hardware-optimized implementations for linear algebra and calculus operations, serving as the backbone for complex predictive models.
+- SIMD-accelerated matrix multiplications and transformations.
+- Gradient descent optimizations and numerical calculus methods.
+- **Core Math:** State estimation models, including standard and extended Kalman filters. Example implementation for state updates:
+  $$x_k = Fx_{k-1} + Bu_k + w_k$$
 
-Simply visit the [Lovable Project](https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID) and start prompting.
+### `2. algo_optimization/` (C++ / Python)
+Advanced sorting algorithms, graph traversals, and dynamic programming solutions optimized for time and space complexity.
+- Custom allocators for lock-free data structures.
+- Big-O benchmark suites for algorithm stress-testing (comparing $O(N \log N)$ vs $O(N^2)$ under heavy load).
 
-Changes made via Lovable will be committed automatically to this repo.
+### `3. distributed_primitives/` (Python)
+Mock implementations and simulators for distributed network consensus and state machines.
+- Raft leader election cycles and heartbeat telemetry.
+- Vector Clocks and logical time tracking across partitioned networks.
 
-**Use your preferred IDE**
+## 🚀 Build Instructions
 
-If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
+The project uses CMake for cross-platform builds. Ensure you have `build-essential` and `cmake` installed.
 
-The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
+```bash
+# Clone the repository
+git clone [https://github.com/your-username/core-sys-algorithms.git](https://github.com/your-username/core-sys-algorithms.git)
+cd core-sys-algorithms
 
-Follow these steps:
+# Configure and build
+mkdir build && cd build
+cmake ..
+make -j$(nproc)
 
-```sh
-# Step 1: Clone the repository using the project's Git URL.
-git clone <YOUR_GIT_URL>
+# Run test suite
+./bin/run_tests
+🛡️ Engineering Standards
+Memory Safety: Strict adherence to RAII in C++. No raw pointers in application logic.
 
-# Step 2: Navigate to the project directory.
-cd <YOUR_PROJECT_NAME>
+Telemetry: All ML and distributed modules export telemetry data for external monitoring.
 
-# Step 3: Install the necessary dependencies.
-npm i
+Complexity: Every algorithm must include a formal proof of its time/space complexity in the respective header file.
 
-# Step 4: Start the development server with auto-reloading and an instant preview.
-npm run dev
-```
-
-**Edit a file directly in GitHub**
-
-- Navigate to the desired file(s).
-- Click the "Edit" button (pencil icon) at the top right of the file view.
-- Make your changes and commit the changes.
-
-**Use GitHub Codespaces**
-
-- Navigate to the main page of your repository.
-- Click on the "Code" button (green button) near the top right.
-- Select the "Codespaces" tab.
-- Click on "New codespace" to launch a new Codespace environment.
-- Edit files directly within the Codespace and commit and push your changes once you're done.
-
-## What technologies are used for this project?
-
-This project is built with:
-
-- Vite
-- TypeScript
-- React
-- shadcn-ui
-- Tailwind CSS
-
-## How can I deploy this project?
-
-Simply open [Lovable](https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID) and click on Share -> Publish.
-
-## Can I connect a custom domain to my Lovable project?
-
-Yes, you can!
-
-To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
-
-Read more here: [Setting up a custom domain](https://docs.lovable.dev/features/custom-domain#custom-domain)
+Maintained by Rafael Ibaev.
