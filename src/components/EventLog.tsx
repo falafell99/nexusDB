@@ -15,21 +15,21 @@ const TYPE_COLORS: Record<string, string> = {
 
 export default function EventLog({ events }: Props) {
   return (
-    <div className="glass-card p-6 h-full">
-      <h2 className="text-sm font-semibold tracking-wider uppercase text-foreground mb-4">Event Log</h2>
-      <div className="space-y-1.5 max-h-[300px] overflow-y-auto pr-2 scrollbar-thin">
+    <div className="panel p-4 h-full">
+      <h2 className="text-xs font-semibold uppercase tracking-wider text-foreground mb-3">Event Log</h2>
+      <div className="space-y-1 max-h-[280px] overflow-y-auto pr-1">
         {events.length === 0 ? (
-          <p className="text-[10px] font-mono text-muted-foreground/50 italic">Waiting for events...</p>
+          <p className="text-[9px] font-mono text-muted-foreground/50">Awaiting events...</p>
         ) : (
           events.map(event => (
-            <div key={event.id} className="flex gap-2 items-start text-[10px] font-mono animate-fade-in">
-              <span className="text-muted-foreground/50 flex-shrink-0 w-16">
+            <div key={event.id} className="flex gap-2 items-start text-[9px] font-mono animate-fade-in">
+              <span className="text-muted-foreground/40 flex-shrink-0 w-14">
                 {new Date(event.timestamp).toLocaleTimeString("en-US", { hour12: false })}
               </span>
-              <span className={`flex-shrink-0 uppercase w-14 ${TYPE_COLORS[event.type] || "text-foreground"}`}>
+              <span className={`flex-shrink-0 uppercase w-12 ${TYPE_COLORS[event.type] || "text-foreground"}`}>
                 [{event.type}]
               </span>
-              <span className="text-foreground/70">{event.message}</span>
+              <span className="text-foreground/60">{event.message}</span>
             </div>
           ))
         )}
