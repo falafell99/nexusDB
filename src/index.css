@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Space+Mono:ital,wght@0,400;0,700;1,400&family=Inter:wght@300;400;500;600;700;800;900&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700;800;900&display=swap');
 
 @tailwind base;
 @tailwind components;
@@ -7,52 +7,48 @@
 @layer base {
   :root {
     --background: 0 0% 1%;
-    --foreground: 0 0% 90%;
+    --foreground: 0 0% 80%;
 
-    --card: 0 0% 5%;
-    --card-foreground: 0 0% 90%;
+    --card: 0 0% 4%;
+    --card-foreground: 0 0% 80%;
 
-    --popover: 0 0% 5%;
-    --popover-foreground: 0 0% 90%;
+    --popover: 0 0% 4%;
+    --popover-foreground: 0 0% 80%;
 
-    --primary: 130 100% 50%;
+    --primary: 142 71% 45%;
     --primary-foreground: 0 0% 2%;
 
-    --secondary: 0 0% 10%;
-    --secondary-foreground: 0 0% 85%;
+    --secondary: 0 0% 8%;
+    --secondary-foreground: 0 0% 65%;
 
-    --muted: 0 0% 8%;
-    --muted-foreground: 0 0% 50%;
+    --muted: 0 0% 7%;
+    --muted-foreground: 0 0% 40%;
 
-    --accent: 40 100% 50%;
+    --accent: 38 92% 50%;
     --accent-foreground: 0 0% 2%;
 
-    --destructive: 0 80% 55%;
+    --destructive: 0 72% 51%;
     --destructive-foreground: 0 0% 98%;
 
-    --border: 0 0% 14%;
-    --input: 0 0% 14%;
-    --ring: 130 100% 50%;
+    --border: 0 0% 12%;
+    --input: 0 0% 12%;
+    --ring: 142 71% 45%;
 
-    --radius: 0.75rem;
+    --radius: 0.25rem;
 
-    --node-leader: 130 100% 50%;
-    --node-follower: 210 80% 55%;
-    --node-candidate: 40 100% 50%;
-    --node-down: 0 80% 55%;
+    --node-leader: 142 71% 45%;
+    --node-follower: 215 14% 45%;
+    --node-candidate: 38 92% 50%;
+    --node-down: 0 72% 51%;
 
-    --glass-bg: 0 0% 6%;
-    --glass-border: 0 0% 16%;
-    --glass-blur: 12px;
-
-    --sidebar-background: 0 0% 3%;
-    --sidebar-foreground: 0 0% 90%;
-    --sidebar-primary: 130 100% 50%;
+    --sidebar-background: 0 0% 2%;
+    --sidebar-foreground: 0 0% 80%;
+    --sidebar-primary: 142 71% 45%;
     --sidebar-primary-foreground: 0 0% 2%;
-    --sidebar-accent: 0 0% 8%;
-    --sidebar-accent-foreground: 0 0% 90%;
-    --sidebar-border: 0 0% 14%;
-    --sidebar-ring: 130 100% 50%;
+    --sidebar-accent: 0 0% 7%;
+    --sidebar-accent-foreground: 0 0% 80%;
+    --sidebar-border: 0 0% 12%;
+    --sidebar-ring: 142 71% 45%;
   }
 }
 
@@ -62,63 +58,31 @@
   }
 
   body {
-    @apply bg-background text-foreground font-sans;
+    @apply bg-background text-foreground;
     font-family: 'Inter', sans-serif;
   }
 }
 
 @layer components {
-  .glass-card {
-    @apply bg-card/60 backdrop-blur-xl border border-glass-border rounded-xl;
-    box-shadow: 0 0 30px hsla(0, 0%, 0%, 0.5), inset 0 1px 0 hsla(0, 0%, 100%, 0.03);
+  .panel {
+    @apply bg-card border border-border;
   }
 
   .font-mono-tech {
-    font-family: 'Space Mono', monospace;
-  }
-
-  .glow-green {
-    box-shadow: 0 0 20px hsla(130, 100%, 50%, 0.3), 0 0 60px hsla(130, 100%, 50%, 0.1);
-  }
-
-  .glow-amber {
-    box-shadow: 0 0 20px hsla(40, 100%, 50%, 0.3), 0 0 60px hsla(40, 100%, 50%, 0.1);
-  }
-
-  .glow-red {
-    box-shadow: 0 0 20px hsla(0, 80%, 55%, 0.3), 0 0 60px hsla(0, 80%, 55%, 0.1);
-  }
-
-  .text-glow-green {
-    text-shadow: 0 0 10px hsla(130, 100%, 50%, 0.5);
+    font-family: 'JetBrains Mono', monospace;
   }
 
   .pulse-animation {
-    animation: pulse-glow 2s ease-in-out infinite;
-  }
-
-  .scanline {
-    background: repeating-linear-gradient(
-      0deg,
-      transparent,
-      transparent 2px,
-      hsla(0, 0%, 100%, 0.01) 2px,
-      hsla(0, 0%, 100%, 0.01) 4px
-    );
+    animation: pulse-blink 2s step-end infinite;
   }
 }
 
-@keyframes pulse-glow {
+@keyframes pulse-blink {
   0%, 100% { opacity: 1; }
-  50% { opacity: 0.5; }
+  50% { opacity: 0.3; }
 }
 
-@keyframes heartbeat-pulse {
-  0% { transform: scale(0); opacity: 1; }
-  100% { transform: scale(1); opacity: 0; }
-}
-
-@keyframes log-scroll {
-  0% { transform: translateX(0); }
-  100% { transform: translateX(-50%); }
+@keyframes fade-in {
+  0% { opacity: 0; }
+  100% { opacity: 1; }
 }

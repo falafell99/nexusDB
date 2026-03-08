@@ -34,7 +34,7 @@ export interface ClusterEvent {
   timestamp: number;
 }
 
-const NODE_NAMES = ["Node A", "Node B", "Node C", "Node D", "Node E"];
+const NODE_NAMES = ["Node 01", "Node 02", "Node 03", "Node 04", "Node 05"];
 const NODE_IDS = ["a", "b", "c", "d", "e"];
 
 function createInitialNodes(): RaftNode[] {
@@ -59,6 +59,7 @@ export function useRaftSimulation() {
   const [events, setEvents] = useState<ClusterEvent[]>([]);
   const [partitioned, setPartitioned] = useState(false);
   const [latencies, setLatencies] = useState<number[]>([12, 15, 11, 14, 13, 16, 12, 15, 11, 18]);
+  const [nodeLatencyOffsets, setNodeLatencyOffsets] = useState<Record<string, number>>({});
   const logIndexRef = useRef(0);
   const heartbeatRef = useRef<ReturnType<typeof setInterval>>();
 
@@ -66,13 +67,9 @@ export function useRaftSimulation() {
     setEvents(prev => [{ id: makeEventId(), type, message, timestamp: Date.now() }, ...prev].slice(0, 50));
   }, []);
 
-  const getLeader = useCallback(() => {
-    return nodes.find(n => n.state === "leader");
-  }, [nodes]);
-
-  const getAliveNodes = useCallback(() => {
-    return nodes.filter(n => n.state !== "down");
-  }, [nodes]);
+  const setNodeLatency = useCallback((id: string, ms: number) => {
+    setNodeLatencyOffsets(prev => ({ ...prev, [id]: ms }));
+  }, []);
 
   const sendHeartbeats = useCallback(() => {
     setNodes(prev => {
@@ -95,10 +92,9 @@ export function useRaftSimulation() {
       setPulses(p => [...p, ...newPulses]);
       setTimeout(() => {
         setPulses(p => p.filter(pulse => !newPulses.find(np => np.id === pulse.id)));
-      }, 800);
+      }, 600);
 
       setLatencies(l => [...l.slice(1), Math.floor(8 + Math.random() * 15)]);
-
       return prev;
     });
   }, []);
@@ -110,13 +106,10 @@ export function useRaftSimulation() {
 
       const maxTerm = Math.max(...prev.map(n => n.term));
       const newTerm = maxTerm + 1;
-
-      // Pick random candidate from alive nodes
       const candidate = alive[Math.floor(Math.random() * alive.length)];
 
-      addEvent("election", `Election started. ${candidate.name} is candidate for Term ${newTerm}`);
+      addEvent("election", `Term ${newTerm}: ${candidate.name} → CANDIDATE`);
 
-      // Send vote requests
       const votePulses: HeartbeatPulse[] = alive
         .filter(n => n.id !== candidate.id)
         .map(n => ({
@@ -128,16 +121,15 @@ export function useRaftSimulation() {
         }));
 
       setPulses(p => [...p, ...votePulses]);
-      setTimeout(() => setPulses(p => p.filter(pulse => !votePulses.find(vp => vp.id === pulse.id))), 800);
+      setTimeout(() => setPulses(p => p.filter(pulse => !votePulses.find(vp => vp.id === pulse.id))), 600);
 
-      // After brief delay, candidate becomes leader
       setTimeout(() => {
         setNodes(curr => curr.map(n => {
           if (n.state === "down") return n;
           if (n.id === candidate.id) return { ...n, state: "leader" as NodeState, term: newTerm, votedFor: candidate.id };
           return { ...n, state: "follower" as NodeState, term: newTerm, votedFor: candidate.id };
         }));
-        addEvent("election", `${candidate.name} elected as Leader for Term ${newTerm}`);
+        addEvent("election", `Term ${newTerm}: ${candidate.name} elected LEADER`);
       }, 1200);
 
       return prev.map(n => {
@@ -154,14 +146,10 @@ export function useRaftSimulation() {
       if (!node || node.state === "down") return prev;
 
       const wasLeader = node.state === "leader";
-      addEvent("nodeDown", `${node.name} went offline`);
+      addEvent("nodeDown", `${node.name} offline`);
 
       const updated = prev.map(n => n.id === nodeId ? { ...n, state: "down" as NodeState } : n);
-
-      if (wasLeader) {
-        setTimeout(() => triggerElection(nodeId), 1500);
-      }
-
+      if (wasLeader) setTimeout(() => triggerElection(nodeId), 1500);
       return updated;
     });
   }, [addEvent, triggerElection]);
@@ -172,8 +160,7 @@ export function useRaftSimulation() {
       if (!node || node.state !== "down") return prev;
 
       const currentTerm = Math.max(...prev.map(n => n.term));
-      addEvent("nodeUp", `${node.name} came back online as Follower`);
-
+      addEvent("nodeUp", `${node.name} online → FOLLOWER`);
       return prev.map(n => n.id === nodeId ? { ...n, state: "follower" as NodeState, term: currentTerm } : n);
     });
   }, [addEvent]);
@@ -182,11 +169,10 @@ export function useRaftSimulation() {
     setPartitioned(prev => {
       const next = !prev;
       if (next) {
-        addEvent("partition", "Network partition: [A,B] isolated from [C,D,E]");
-        // Trigger election in majority partition
+        addEvent("partition", "Network split: [N-01,N-02] ↔ [N-03,N-04,N-05]");
         setTimeout(() => triggerElection(), 2000);
       } else {
-        addEvent("partition", "Network partition healed. Cluster re-converging.");
+        addEvent("partition", "Partition healed. Re-converging.");
         setTimeout(() => triggerElection(), 1000);
       }
       return next;
@@ -201,16 +187,15 @@ export function useRaftSimulation() {
     setNodes(prev => {
       const leader = prev.find(n => n.state === "leader");
       if (!leader) {
-        addEvent("write", `Write rejected: No leader available`);
+        addEvent("write", `REJECTED: No leader`);
         return prev;
       }
 
       const currentTerm = leader.term;
       const entry: LogEntry = { index: idx, term: currentTerm, command, committed: false, timestamp: Date.now() };
 
-      addEvent("write", `Leader ${leader.name} received: ${command}`);
+      addEvent("write", `${leader.name} ← ${command}`);
 
-      // Replicate to followers
       const followers = prev.filter(n => n.state === "follower");
       const replicatePulses: HeartbeatPulse[] = followers.map(f => ({
         id: makePulseId(),
@@ -221,18 +206,14 @@ export function useRaftSimulation() {
       }));
 
       setPulses(p => [...p, ...replicatePulses]);
-      setTimeout(() => setPulses(p => p.filter(pulse => !replicatePulses.find(rp => rp.id === pulse.id))), 1000);
+      setTimeout(() => setPulses(p => p.filter(pulse => !replicatePulses.find(rp => rp.id === pulse.id))), 800);
 
-      // Commit after quorum
       setTimeout(() => {
         setNodes(curr => curr.map(n => {
           if (n.state === "down") return n;
-          return {
-            ...n,
-            log: [...n.log, { ...entry, committed: true }].slice(-20),
-          };
+          return { ...n, log: [...n.log, { ...entry, committed: true }].slice(-20) };
         }));
-        addEvent("commit", `Committed: ${command} (Index ${idx}, Term ${currentTerm}) — Quorum reached`);
+        addEvent("commit", `COMMITTED: ${command} [idx:${idx} term:${currentTerm}]`);
         setLatencies(l => [...l.slice(1), Math.floor(10 + Math.random() * 20)]);
       }, 800);
 
@@ -243,7 +224,6 @@ export function useRaftSimulation() {
     });
   }, [addEvent]);
 
-  // Heartbeat interval
   useEffect(() => {
     heartbeatRef.current = setInterval(sendHeartbeats, 2000);
     return () => clearInterval(heartbeatRef.current);
@@ -254,19 +234,9 @@ export function useRaftSimulation() {
   const currentTerm = Math.max(...nodes.map(n => n.term));
 
   return {
-    nodes,
-    pulses,
-    events,
-    partitioned,
-    latencies,
-    quorumCount,
-    quorumReached,
-    currentTerm,
-    killNode,
-    reviveNode,
-    togglePartition,
-    writeValue,
-    getLeader,
-    getAliveNodes,
+    nodes, pulses, events, partitioned, latencies,
+    quorumCount, quorumReached, currentTerm,
+    killNode, reviveNode, togglePartition, writeValue,
+    nodeLatencyOffsets, setNodeLatency,
   };
 }

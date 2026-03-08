@@ -8,25 +8,18 @@ interface Props {
 }
 
 const NODE_POSITIONS = [
-  { x: 200, y: 50 },   // A - top
-  { x: 350, y: 150 },  // B - right
-  { x: 300, y: 310 },  // C - bottom-right
-  { x: 100, y: 310 },  // D - bottom-left
-  { x: 50, y: 150 },   // E - left
+  { x: 200, y: 55 },
+  { x: 345, y: 150 },
+  { x: 295, y: 310 },
+  { x: 105, y: 310 },
+  { x: 55, y: 150 },
 ];
 
 const STATE_COLORS: Record<string, string> = {
-  leader: "#00ff41",
-  follower: "#3b82f6",
+  leader: "#22c55e",
+  follower: "#64748b",
   candidate: "#f59e0b",
   down: "#ef4444",
-};
-
-const STATE_GLOW: Record<string, string> = {
-  leader: "0 0 20px #00ff41, 0 0 40px rgba(0,255,65,0.3)",
-  follower: "0 0 10px rgba(59,130,246,0.3)",
-  candidate: "0 0 15px #f59e0b, 0 0 30px rgba(245,158,11,0.2)",
-  down: "0 0 10px rgba(239,68,68,0.2)",
 };
 
 export default function ClusterTopology({ nodes, pulses, onNodeClick }: Props) {
@@ -46,16 +39,12 @@ export default function ClusterTopology({ nodes, pulses, onNodeClick }: Props) {
     canvas.height = 400 * dpr;
     ctx.scale(dpr, dpr);
 
-    let frameCount = 0;
-
     const draw = () => {
-      frameCount++;
       ctx.clearRect(0, 0, 400, 400);
-
       const currentNodes = nodesRef.current;
       const currentPulses = pulsesRef.current;
 
-      // Draw connection lines
+      // Connection lines
       for (let i = 0; i < 5; i++) {
         for (let j = i + 1; j < 5; j++) {
           const a = NODE_POSITIONS[i];
@@ -67,96 +56,69 @@ export default function ClusterTopology({ nodes, pulses, onNodeClick }: Props) {
           ctx.beginPath();
           ctx.moveTo(a.x, a.y);
           ctx.lineTo(b.x, b.y);
-          ctx.strokeStyle = bothAlive ? "rgba(255,255,255,0.06)" : "rgba(255,0,0,0.05)";
+          ctx.strokeStyle = bothAlive ? "rgba(255,255,255,0.04)" : "rgba(239,68,68,0.03)";
           ctx.lineWidth = 1;
           ctx.stroke();
         }
       }
 
-      // Draw animated pulses
+      // Pulses — thin fast dots
       currentPulses.forEach(pulse => {
         const fromIdx = ["a", "b", "c", "d", "e"].indexOf(pulse.from);
         const toIdx = ["a", "b", "c", "d", "e"].indexOf(pulse.to);
         if (fromIdx < 0 || toIdx < 0) return;
 
         const elapsed = Date.now() - pulse.timestamp;
-        const progress = Math.min(elapsed / 800, 1);
+        const progress = Math.min(elapsed / 600, 1);
         const from = NODE_POSITIONS[fromIdx];
         const to = NODE_POSITIONS[toIdx];
         const x = from.x + (to.x - from.x) * progress;
         const y = from.y + (to.y - from.y) * progress;
 
-        const color = pulse.type === "heartbeat" ? "#00ff41" :
-          pulse.type === "appendEntries" ? "#3b82f6" :
-          pulse.type === "voteRequest" ? "#f59e0b" : "#8b5cf6";
+        const color = pulse.type === "heartbeat" ? "#64748b" :
+          pulse.type === "appendEntries" ? "#22c55e" :
+          pulse.type === "voteRequest" ? "#f59e0b" : "#64748b";
 
         ctx.beginPath();
-        ctx.arc(x, y, 3, 0, Math.PI * 2);
+        ctx.arc(x, y, 2, 0, Math.PI * 2);
         ctx.fillStyle = color;
-        ctx.fill();
-
-        ctx.beginPath();
-        ctx.arc(x, y, 6, 0, Math.PI * 2);
-        ctx.fillStyle = color.replace(")", ",0.3)").replace("rgb", "rgba").replace("#", "");
-        ctx.fillStyle = `${color}4D`;
         ctx.fill();
       });
 
-      // Draw nodes
+      // Nodes
       currentNodes.forEach((node, i) => {
         const pos = NODE_POSITIONS[i];
         const color = STATE_COLORS[node.state];
         const isLeader = node.state === "leader";
-        const isCandidate = node.state === "candidate";
 
-        // Outer glow for leader
-        if (isLeader) {
-          const glowSize = 30 + Math.sin(frameCount * 0.05) * 5;
-          const gradient = ctx.createRadialGradient(pos.x, pos.y, 0, pos.x, pos.y, glowSize);
-          gradient.addColorStop(0, "rgba(0,255,65,0.15)");
-          gradient.addColorStop(1, "rgba(0,255,65,0)");
-          ctx.beginPath();
-          ctx.arc(pos.x, pos.y, glowSize, 0, Math.PI * 2);
-          ctx.fillStyle = gradient;
-          ctx.fill();
-        }
-
-        // Pulsing ring for candidate
-        if (isCandidate) {
-          const pulseSize = 20 + (frameCount % 60) / 60 * 15;
-          const pulseAlpha = 1 - (frameCount % 60) / 60;
-          ctx.beginPath();
-          ctx.arc(pos.x, pos.y, pulseSize, 0, Math.PI * 2);
-          ctx.strokeStyle = `rgba(245,158,11,${pulseAlpha * 0.5})`;
-          ctx.lineWidth = 2;
-          ctx.stroke();
-        }
-
-        // Node circle
+        // Node circle — flat, no glow
         ctx.beginPath();
-        ctx.arc(pos.x, pos.y, 18, 0, Math.PI * 2);
-        ctx.fillStyle = node.state === "down" ? "rgba(20,20,20,0.8)" : "rgba(10,10,10,0.9)";
+        ctx.arc(pos.x, pos.y, 20, 0, Math.PI * 2);
+        ctx.fillStyle = "#0a0a0a";
         ctx.fill();
         ctx.strokeStyle = color;
-        ctx.lineWidth = 2;
+        ctx.lineWidth = isLeader ? 2 : 1;
         ctx.stroke();
 
-        // Inner dot
+        // Inner indicator
         ctx.beginPath();
-        ctx.arc(pos.x, pos.y, 5, 0, Math.PI * 2);
+        ctx.arc(pos.x, pos.y, 4, 0, Math.PI * 2);
         ctx.fillStyle = color;
         ctx.fill();
 
-        // Label
-        ctx.fillStyle = "rgba(255,255,255,0.7)";
-        ctx.font = "11px 'Space Mono', monospace";
+        // Node ID label
+        ctx.fillStyle = "rgba(255,255,255,0.6)";
+        ctx.font = "10px 'JetBrains Mono', monospace";
         ctx.textAlign = "center";
-        ctx.fillText(node.name, pos.x, pos.y + 35);
+        ctx.fillText(`N-0${i + 1}`, pos.x, pos.y + 36);
 
-        // State label
+        // State tag
         ctx.fillStyle = color;
-        ctx.font = "9px 'Space Mono', monospace";
-        ctx.fillText(node.state.toUpperCase(), pos.x, pos.y + 47);
+        ctx.font = "9px 'JetBrains Mono', monospace";
+        const tag = node.state === "leader" ? "LEADER" :
+          node.state === "candidate" ? "CANDIDATE" :
+          node.state === "down" ? "DOWN" : "FOLLOWER";
+        ctx.fillText(tag, pos.x, pos.y + 47);
       });
 
       animFrameRef.current = requestAnimationFrame(draw);
@@ -180,7 +142,7 @@ export default function ClusterTopology({ nodes, pulses, onNodeClick }: Props) {
       const pos = NODE_POSITIONS[i];
       const dx = x * scaleX - pos.x;
       const dy = y * scaleY - pos.y;
-      if (dx * dx + dy * dy < 625) { // 25^2
+      if (dx * dx + dy * dy < 625) {
         onNodeClick(nodes[i].id);
         return;
       }
@@ -188,14 +150,14 @@ export default function ClusterTopology({ nodes, pulses, onNodeClick }: Props) {
   };
 
   return (
-    <div className="glass-card p-6">
-      <div className="flex items-center justify-between mb-4">
-        <h2 className="text-sm font-semibold tracking-wider uppercase text-foreground">Cluster Topology</h2>
-        <div className="flex gap-3 text-[10px] font-mono">
-          <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-node-leader" /> Leader</span>
-          <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-node-follower" /> Follower</span>
-          <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-node-candidate" /> Candidate</span>
-          <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-node-down" /> Down</span>
+    <div className="panel p-4">
+      <div className="flex items-center justify-between mb-3">
+        <h2 className="text-xs font-semibold uppercase tracking-wider text-foreground">Cluster Topology</h2>
+        <div className="flex gap-3 text-[9px] font-mono text-muted-foreground">
+          <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 bg-node-leader" /> LDR</span>
+          <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 bg-node-follower" /> FLW</span>
+          <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 bg-node-candidate" /> CND</span>
+          <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 bg-node-down" /> DWN</span>
         </div>
       </div>
       <canvas
@@ -204,7 +166,7 @@ export default function ClusterTopology({ nodes, pulses, onNodeClick }: Props) {
         style={{ aspectRatio: "1" }}
         onClick={handleClick}
       />
-      <p className="text-[10px] text-muted-foreground text-center mt-2 font-mono">Click a node to toggle its state</p>
+      <p className="text-[9px] text-muted-foreground text-center mt-2 font-mono">Click node to toggle state</p>
     </div>
   );
 }
