@@ -1,88 +1,55 @@
-🛡️ NexusDB: Fault-Tolerant Distributed Key-Value Store
+NexusDB: High-Availability Distributed Key-Value Store 🛡️💾
+📌 Overview
+NexusDB is a distributed, strongly consistent key-value store designed to handle high-availability requirements in modern cloud infrastructures. At its core, NexusDB implements the Raft Consensus Algorithm to ensure that data remains synchronized across multiple nodes, even in the event of partial network failures or server crashes.
 
-Project Codename: Raft Overseer
+This project serves as a comprehensive study of Distributed Systems, focusing on state machine replication and fault-tolerant architecture.
 
-Architecture: Distributed / Strongly Consistent
-
-Protocol: Raft Consensus Algorithm
-
-Environment: Linux / Dockerized Cluster
-
-Status: v1.0-stable
-
-NexusDB is a high-availability distributed storage system designed to maintain data integrity across unstable network environments. Built on the Raft Consensus Algorithm, it ensures strict linearizability and fault tolerance by synchronizing state machines across a multi-node cluster.
-
-🏗 System Architecture
-The core of NexusDB is based on State Machine Replication (SMR). Each node acts as an independent agent that transitions through specific states (Follower, Candidate, Leader) to maintain a synchronized log.
+⚙️ Distributed Architecture
+NexusDB guarantees safety and consistency through a rigorous implementation of the Raft protocol:
 
 1. Leader Election
 
-The system utilizes randomized heartbeat timeouts to trigger elections, ensuring a single, stable leader within any given term.
-
-Election Safety: Guarantees that at most one leader can be elected in a single term.
-
-Heartbeat Telemetry: Real-time monitoring of leader-to-follower health pings.
+Nodes operate in one of three states: Follower, Candidate, or Leader. If a Follower fails to receive a heartbeat within a randomized timeout, it transitions to a Candidate state and initiates a new election term.
 
 2. Log Replication
 
-All state-changing operations are processed by the Leader, which appends the command to its log and replicates it to all Followers.
+All state changes flow through the Leader. Once an entry is appended to the Leader's log, it is replicated to all Followers.
 
-3. Safety (Quorum)
+3. Strong Consistency (Quorum)
 
-To guarantee consistency, a write is only considered Committed once it has been acknowledged by a majority of nodes:
+NexusDB adheres to the majority rule. A write operation is only considered Committed once it is safely stored on a majority of nodes:
 
-Quorum=⌊n/2⌋+1
-where n is the total number of active nodes in the cluster.
+Q=⌊n/2⌋+1
+This ensures that even if ⌊n/2⌋ nodes fail, the system remains operational and consistent.
 
-⚡ Engineering Features
-Raft Core: Full implementation of Leader Election, Log Replication, and Safety protocols.
+🛠 Features
+Interactive Cluster Monitor: Real-time visualization of the node topology and current roles (using the Raft Overseer dashboard).
 
-Chaos Engineering Console: A mission-control interface to stress-test the cluster:
+Chaos Engineering Suite: * Node Termination: Manually crash the leader or followers to observe self-healing capabilities.
 
-Node Kill: Force-stop any node process to trigger re-elections.
+Network Partitioning: Simulate "Split Brain" scenarios and watch the Quorum logic in action.
 
-Network Partition: Simulate network splits to test split-brain prevention.
+Visual Log Stream: Monitor how SET and DELETE operations propagate through the distributed log indices.
 
-Visual Telemetry: Real-time dashboard tracking:
+Performance Telemetry: Real-time metrics on election terms, commit indices, and replication latency.
 
-Current Terms & Vote Counts.
+🚀 Tech Stack
+Frontend: React, TypeScript.
 
-Log Index synchronization status.
+Styling: Tailwind CSS (Enterprise Dark Theme).
 
-Logical Clock (Lamport) progression.
+Animations: Framer Motion (for node communication and state transitions).
 
-Persistence Layer: Write-ahead logging (WAL) for state recovery after crash-faults.
+Infrastructure: GitHub CI/CD & Vercel.
 
-🛠 Tech Stack
-Languages: Python (Logic/Prototyping), C++ (Core Performance)
+👨‍💻 Author
+Rafael Ibayev
 
-Networking: gRPC / Protocol Buffers (Protobuf) for inter-node RPC calls.
+Computer Science Student @ ELTE University, Budapest.
 
-Visualization: Custom CLI / Streamlit-based telemetry dashboard.
+International STEM Olympiad Gold Medalist.
 
-Testing: Distributed trace analysis and pytest for consensus validation.
+Passionate about Distributed Systems, AI Safety, and Robotics.
 
-🚀 Deployment & Operations
-Initialize Cluster
-
-Spin up a local 5-node cluster with automated port mapping:
-
-Bash
-python cluster_manager.py --nodes 5 --port_start 5000
-Chaos Simulation
-
-Trigger a network partition to observe the system's ability to maintain consistency:
-
-Bash
-# Isolate node 1 and 2 from the rest of the cluster
-python chaos_console.py --partition 1,2 3,4,5
-📊 Performance Metrics
-Consensus Latency: < 12ms (Internal LAN).
-
-Fault Tolerance: System remains operational with up to (n−1)/2 node failures.
-
-Consistency Level: Strict Linearizability (CP in CAP Theorem).
-
-Lead Engineer: Rafael Ibaev
-
-ELTE University, Budapest
+📄 License
+MIT License
