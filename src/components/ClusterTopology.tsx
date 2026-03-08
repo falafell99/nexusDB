@@ -4,15 +4,16 @@ import type { RaftNode, HeartbeatPulse } from "@/hooks/useRaftSimulation";
 interface Props {
   nodes: RaftNode[];
   pulses: HeartbeatPulse[];
+  partitioned: boolean;
   onNodeClick: (id: string) => void;
 }
 
 const NODE_POSITIONS = [
-  { x: 200, y: 55 },
-  { x: 345, y: 150 },
-  { x: 295, y: 310 },
-  { x: 105, y: 310 },
-  { x: 55, y: 150 },
+  { x: 120, y: 80 },   // N-01 (minority)
+  { x: 120, y: 200 },  // N-02 (minority)
+  { x: 300, y: 60 },   // N-03 (majority)
+  { x: 340, y: 190 },  // N-04 (majority)
+  { x: 260, y: 300 },  // N-05 (majority)
 ];
 
 const STATE_COLORS: Record<string, string> = {
@@ -22,13 +23,61 @@ const STATE_COLORS: Record<string, string> = {
   down: "#ef4444",
 };
 
-export default function ClusterTopology({ nodes, pulses, onNodeClick }: Props) {
+// Static noise line data — pre-generated for consistency
+function drawPartitionLine(ctx: CanvasRenderingContext2D, time: number) {
+  const x = 210;
+  const segments = 40;
+  const segH = 400 / segments;
+
+  ctx.save();
+  
+  // Draw noisy red static line
+  for (let i = 0; i < segments; i++) {
+    const y = i * segH;
+    const noise = Math.sin(time * 0.003 + i * 1.7) * 8 + Math.sin(time * 0.007 + i * 3.1) * 4;
+    const xOff = x + noise;
+    const alpha = 0.3 + 0.3 * Math.abs(Math.sin(time * 0.005 + i * 0.5));
+    
+    // Static noise pixels around the line
+    for (let j = -6; j <= 6; j++) {
+      const px = xOff + j + (Math.random() - 0.5) * 4;
+      const py = y + (Math.random() - 0.5) * segH * 0.8;
+      const pAlpha = alpha * (1 - Math.abs(j) / 8) * (0.3 + Math.random() * 0.7);
+      ctx.fillStyle = `rgba(239, 68, 68, ${pAlpha})`;
+      ctx.fillRect(px, py, 1 + Math.random(), 1 + Math.random());
+    }
+    
+    // Core line segments
+    ctx.beginPath();
+    ctx.moveTo(xOff - 1, y);
+    ctx.lineTo(xOff + 1 + Math.random() * 2, y + segH);
+    ctx.strokeStyle = `rgba(239, 68, 68, ${alpha * 0.8})`;
+    ctx.lineWidth = 1;
+    ctx.stroke();
+  }
+  
+  // "PARTITION" label
+  ctx.save();
+  ctx.translate(x - 2, 200);
+  ctx.rotate(-Math.PI / 2);
+  ctx.fillStyle = `rgba(239, 68, 68, ${0.4 + 0.2 * Math.sin(time * 0.003)})`;
+  ctx.font = "9px 'JetBrains Mono', monospace";
+  ctx.textAlign = "center";
+  ctx.fillText("NETWORK PARTITION", 0, 0);
+  ctx.restore();
+
+  ctx.restore();
+}
+
+export default function ClusterTopology({ nodes, pulses, partitioned, onNodeClick }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const animFrameRef = useRef<number>();
   const pulsesRef = useRef(pulses);
   const nodesRef = useRef(nodes);
+  const partitionedRef = useRef(partitioned);
   pulsesRef.current = pulses;
   nodesRef.current = nodes;
+  partitionedRef.current = partitioned;
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -40,9 +89,11 @@ export default function ClusterTopology({ nodes, pulses, onNodeClick }: Props) {
     ctx.scale(dpr, dpr);
 
     const draw = () => {
+      const now = Date.now();
       ctx.clearRect(0, 0, 400, 400);
       const currentNodes = nodesRef.current;
       const currentPulses = pulsesRef.current;
+      const isPartitioned = partitionedRef.current;
 
       // Connection lines
       for (let i = 0; i < 5; i++) {
@@ -53,6 +104,10 @@ export default function ClusterTopology({ nodes, pulses, onNodeClick }: Props) {
           const nodeB = currentNodes[j];
           const bothAlive = nodeA.state !== "down" && nodeB.state !== "down";
 
+          // If partitioned, don't draw cross-partition lines
+          const sameGroup = (i < 2 && j < 2) || (i >= 2 && j >= 2);
+          if (isPartitioned && !sameGroup) continue;
+
           ctx.beginPath();
           ctx.moveTo(a.x, a.y);
           ctx.lineTo(b.x, b.y);
@@ -62,13 +117,18 @@ export default function ClusterTopology({ nodes, pulses, onNodeClick }: Props) {
         }
       }
 
-      // Pulses — thin fast dots
+      // Partition visual
+      if (isPartitioned) {
+        drawPartitionLine(ctx, now);
+      }
+
+      // Pulses
       currentPulses.forEach(pulse => {
         const fromIdx = ["a", "b", "c", "d", "e"].indexOf(pulse.from);
         const toIdx = ["a", "b", "c", "d", "e"].indexOf(pulse.to);
         if (fromIdx < 0 || toIdx < 0) return;
 
-        const elapsed = Date.now() - pulse.timestamp;
+        const elapsed = now - pulse.timestamp;
         const progress = Math.min(elapsed / 600, 1);
         const from = NODE_POSITIONS[fromIdx];
         const to = NODE_POSITIONS[toIdx];
@@ -92,13 +152,12 @@ export default function ClusterTopology({ nodes, pulses, onNodeClick }: Props) {
         const isLeader = node.state === "leader";
         const isCandidate = node.state === "candidate";
 
-        // Candidate pulse effect
         let strokeAlpha = 1;
         if (isCandidate) {
-          strokeAlpha = 0.5 + 0.5 * Math.abs(Math.sin(Date.now() / 400));
+          strokeAlpha = 0.5 + 0.5 * Math.abs(Math.sin(now / 400));
         }
 
-        // Node circle — flat, no glow
+        // Node circle
         ctx.beginPath();
         ctx.arc(pos.x, pos.y, 20, 0, Math.PI * 2);
         ctx.fillStyle = "#09090b";
@@ -128,6 +187,13 @@ export default function ClusterTopology({ nodes, pulses, onNodeClick }: Props) {
           node.state === "candidate" ? "CANDIDATE" :
           node.state === "down" ? "DOWN" : "FOLLOWER";
         ctx.fillText(tag, pos.x, pos.y + 47);
+
+        // Partition group label when partitioned
+        if (isPartitioned && node.state !== "down") {
+          ctx.fillStyle = i < 2 ? "rgba(239,68,68,0.4)" : "rgba(34,197,94,0.3)";
+          ctx.font = "8px 'JetBrains Mono', monospace";
+          ctx.fillText(i < 2 ? "MINORITY" : "MAJORITY", pos.x, pos.y - 28);
+        }
       });
 
       animFrameRef.current = requestAnimationFrame(draw);
