@@ -90,15 +90,24 @@ export default function ClusterTopology({ nodes, pulses, onNodeClick }: Props) {
         const pos = NODE_POSITIONS[i];
         const color = STATE_COLORS[node.state];
         const isLeader = node.state === "leader";
+        const isCandidate = node.state === "candidate";
+
+        // Candidate pulse effect
+        let strokeAlpha = 1;
+        if (isCandidate) {
+          strokeAlpha = 0.5 + 0.5 * Math.abs(Math.sin(Date.now() / 400));
+        }
 
         // Node circle — flat, no glow
         ctx.beginPath();
         ctx.arc(pos.x, pos.y, 20, 0, Math.PI * 2);
-        ctx.fillStyle = "#0a0a0a";
+        ctx.fillStyle = "#09090b";
         ctx.fill();
+        ctx.globalAlpha = strokeAlpha;
         ctx.strokeStyle = color;
-        ctx.lineWidth = isLeader ? 2 : 1;
+        ctx.lineWidth = isLeader ? 2 : isCandidate ? 2 : 1;
         ctx.stroke();
+        ctx.globalAlpha = 1;
 
         // Inner indicator
         ctx.beginPath();
