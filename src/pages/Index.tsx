@@ -15,6 +15,7 @@ export default function Index() {
     quorumCount, quorumReached, currentTerm,
     killNode, reviveNode, togglePartition, writeValue,
     nodeLatencyOffsets, setNodeLatency,
+    minorityIds, majorityIds, setPartitionGroups,
   } = useRaftSimulation();
 
   const handleNodeClick = (id: string) => {
@@ -67,7 +68,14 @@ export default function Index() {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
           {/* Topology */}
           <div className="lg:col-span-1">
-            <ClusterTopology nodes={nodes} pulses={pulses} partitioned={partitioned} onNodeClick={handleNodeClick} />
+            <ClusterTopology
+              nodes={nodes}
+              pulses={pulses}
+              partitioned={partitioned}
+              onNodeClick={handleNodeClick}
+              partitionGroups={{ minority: minorityIds, majority: majorityIds }}
+              onPartitionGroupsChange={setPartitionGroups}
+            />
           </div>
 
           {/* Controls + WAL */}

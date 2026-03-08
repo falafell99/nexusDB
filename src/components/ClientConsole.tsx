@@ -20,8 +20,11 @@ export default function ClientConsole({ nodes, onWrite }: Props) {
   const [input, setInput] = useState("");
   const [entries, setEntries] = useState<ConsoleEntry[]>([
     { id: "init-0", type: "info", text: "NexusDB Client v2.4.1 — connected to cluster", timestamp: Date.now() },
-    { id: "init-1", type: "info", text: "Type SET key=value to write, or HELP for commands.", timestamp: Date.now() },
+    { id: "init-1", type: "info", text: "Type SET key=value to write, GET key to read, or HELP for commands.", timestamp: Date.now() },
   ]);
+  const [history, setHistory] = useState<string[]>([]);
+  const [historyIdx, setHistoryIdx] = useState(-1);
+  const [savedInput, setSavedInput] = useState("");
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -39,8 +42,37 @@ export default function ClientConsole({ nodes, onWrite }: Props) {
     const cmd = input.trim();
     if (!cmd) return;
     setInput("");
+    setHistory(prev => [...prev.filter(h => h !== cmd), cmd]);
+    setHistoryIdx(-1);
+    setSavedInput("");
 
     addEntry("input", cmd);
+
+    // Parse GET key
+    const getMatch = cmd.match(/^GET\s+(\w+)$/i);
+    if (getMatch) {
+      const [, key] = getMatch;
+      const leader = nodes.find(n => n.state === "leader");
+      if (!leader) {
+        addEntry("error", "ERR: No leader available. Cluster may be in election.");
+        return;
+      }
+      addEntry("info", `→ Reading from ${leader.name} (LEADER)`);
+      // Search committed log for latest SET of this key
+      const entries_log = [...leader.log].reverse();
+      const found = entries_log.find(e => e.committed && e.command.startsWith(`SET ${key} `));
+      if (found) {
+        const val = found.command.replace(`SET ${key} `, "");
+        setTimeout(() => {
+          addEntry("success", `✓ ${key} = "${val}" (index:${found.index}, term:${found.term})`);
+        }, 200);
+      } else {
+        setTimeout(() => {
+          addEntry("error", `✗ Key "${key}" not found in committed log.`);
+        }, 200);
+      }
+      return;
+    }
 
     // Parse SET key=value
     const setMatch = cmd.match(/^SET\s+(\w+)\s*=\s*(.+)$/i);
@@ -55,7 +87,6 @@ export default function ClientConsole({ nodes, onWrite }: Props) {
 
       addEntry("info", `→ Routing to ${leader.name} (LEADER)`);
 
-      // Simulate the visual flow with timed entries
       setTimeout(() => {
         addEntry("rpc", `${leader.name} log ← [SET ${key}=${value}] (uncommitted)`);
       }, 300);
@@ -76,7 +107,6 @@ export default function ClientConsole({ nodes, onWrite }: Props) {
         }
       }, 1200);
 
-      // Trigger actual write
       onWrite(key, value);
       return;
     }
@@ -85,8 +115,10 @@ export default function ClientConsole({ nodes, onWrite }: Props) {
     if (/^HELP$/i.test(cmd)) {
       addEntry("info", "Commands:");
       addEntry("info", "  SET key=value  — Write a key-value pair");
+      addEntry("info", "  GET key        — Read a value from committed log");
       addEntry("info", "  STATUS         — Show cluster status");
       addEntry("info", "  CLEAR          — Clear console");
+      addEntry("info", "  ↑/↓            — Navigate command history");
       return;
     }
 
@@ -113,6 +145,30 @@ export default function ClientConsole({ nodes, onWrite }: Props) {
     if (e.key === "Enter") {
       e.preventDefault();
       handleSubmit();
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      if (history.length === 0) return;
+      if (historyIdx === -1) {
+        setSavedInput(input);
+        const idx = history.length - 1;
+        setHistoryIdx(idx);
+        setInput(history[idx]);
+      } else if (historyIdx > 0) {
+        const idx = historyIdx - 1;
+        setHistoryIdx(idx);
+        setInput(history[idx]);
+      }
+    } else if (e.key === "ArrowDown") {
+      e.preventDefault();
+      if (historyIdx === -1) return;
+      if (historyIdx < history.length - 1) {
+        const idx = historyIdx + 1;
+        setHistoryIdx(idx);
+        setInput(history[idx]);
+      } else {
+        setHistoryIdx(-1);
+        setInput(savedInput);
+      }
     }
   };
 
@@ -166,7 +222,7 @@ export default function ClientConsole({ nodes, onWrite }: Props) {
           value={input}
           onChange={e => setInput(e.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder="SET key=value"
+          placeholder="SET key=value | GET key"
           className="flex-1 bg-transparent text-[10px] font-mono text-foreground placeholder:text-muted-foreground/40 focus:outline-none"
           spellCheck={false}
           autoComplete="off"
