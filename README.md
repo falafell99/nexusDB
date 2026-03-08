@@ -1,54 +1,88 @@
-# ◼️ CORE_SYS_ALGORITHMS
+🛡️ NexusDB: Fault-Tolerant Distributed Key-Value Store
 
-**Status:** `Active` | **Target:** `x86_64 / ARM64` | **CI/CD:** `Strict`
+Project Codename: Raft Overseer
 
-A high-performance repository containing low-level implementations of foundational algorithms, distributed system primitives, and mathematical models. Engineered for low-latency execution, memory safety, and absolute mathematical rigor.
+Architecture: Distributed / Strongly Consistent
 
-## ⚙️ Core Stack
-- **Systems & Performance:** C++, C
-- **Prototyping & ML Logic:** Python
-- **Build & Tooling:** CMake, Make, GCC/Clang
+Protocol: Raft Consensus Algorithm
 
-## 🏗 Architecture & Modules
+Environment: Linux / Dockerized Cluster
 
-### `1. math_core/` (C / C++)
-Hardware-optimized implementations for linear algebra and calculus operations, serving as the backbone for complex predictive models.
-- SIMD-accelerated matrix multiplications and transformations.
-- Gradient descent optimizations and numerical calculus methods.
-- **Core Math:** State estimation models, including standard and extended Kalman filters. Example implementation for state updates:
-  $$x_k = Fx_{k-1} + Bu_k + w_k$$
+Status: v1.0-stable
 
-### `2. algo_optimization/` (C++ / Python)
-Advanced sorting algorithms, graph traversals, and dynamic programming solutions optimized for time and space complexity.
-- Custom allocators for lock-free data structures.
-- Big-O benchmark suites for algorithm stress-testing (comparing $O(N \log N)$ vs $O(N^2)$ under heavy load).
+NexusDB is a high-availability distributed storage system designed to maintain data integrity across unstable network environments. Built on the Raft Consensus Algorithm, it ensures strict linearizability and fault tolerance by synchronizing state machines across a multi-node cluster.
 
-### `3. distributed_primitives/` (Python)
-Mock implementations and simulators for distributed network consensus and state machines.
-- Raft leader election cycles and heartbeat telemetry.
-- Vector Clocks and logical time tracking across partitioned networks.
+🏗 System Architecture
+The core of NexusDB is based on State Machine Replication (SMR). Each node acts as an independent agent that transitions through specific states (Follower, Candidate, Leader) to maintain a synchronized log.
 
-## 🚀 Build Instructions
+1. Leader Election
 
-The project uses CMake for cross-platform builds. Ensure you have `build-essential` and `cmake` installed.
+The system utilizes randomized heartbeat timeouts to trigger elections, ensuring a single, stable leader within any given term.
 
-```bash
-# Clone the repository
-git clone [https://github.com/your-username/core-sys-algorithms.git](https://github.com/your-username/core-sys-algorithms.git)
-cd core-sys-algorithms
+Election Safety: Guarantees that at most one leader can be elected in a single term.
 
-# Configure and build
-mkdir build && cd build
-cmake ..
-make -j$(nproc)
+Heartbeat Telemetry: Real-time monitoring of leader-to-follower health pings.
 
-# Run test suite
-./bin/run_tests
-🛡️ Engineering Standards
-Memory Safety: Strict adherence to RAII in C++. No raw pointers in application logic.
+2. Log Replication
 
-Telemetry: All ML and distributed modules export telemetry data for external monitoring.
+All state-changing operations are processed by the Leader, which appends the command to its log and replicates it to all Followers.
 
-Complexity: Every algorithm must include a formal proof of its time/space complexity in the respective header file.
+3. Safety (Quorum)
 
-Maintained by Rafael Ibaev.
+To guarantee consistency, a write is only considered Committed once it has been acknowledged by a majority of nodes:
+
+Quorum=⌊n/2⌋+1
+where n is the total number of active nodes in the cluster.
+
+⚡ Engineering Features
+Raft Core: Full implementation of Leader Election, Log Replication, and Safety protocols.
+
+Chaos Engineering Console: A mission-control interface to stress-test the cluster:
+
+Node Kill: Force-stop any node process to trigger re-elections.
+
+Network Partition: Simulate network splits to test split-brain prevention.
+
+Visual Telemetry: Real-time dashboard tracking:
+
+Current Terms & Vote Counts.
+
+Log Index synchronization status.
+
+Logical Clock (Lamport) progression.
+
+Persistence Layer: Write-ahead logging (WAL) for state recovery after crash-faults.
+
+🛠 Tech Stack
+Languages: Python (Logic/Prototyping), C++ (Core Performance)
+
+Networking: gRPC / Protocol Buffers (Protobuf) for inter-node RPC calls.
+
+Visualization: Custom CLI / Streamlit-based telemetry dashboard.
+
+Testing: Distributed trace analysis and pytest for consensus validation.
+
+🚀 Deployment & Operations
+Initialize Cluster
+
+Spin up a local 5-node cluster with automated port mapping:
+
+Bash
+python cluster_manager.py --nodes 5 --port_start 5000
+Chaos Simulation
+
+Trigger a network partition to observe the system's ability to maintain consistency:
+
+Bash
+# Isolate node 1 and 2 from the rest of the cluster
+python chaos_console.py --partition 1,2 3,4,5
+📊 Performance Metrics
+Consensus Latency: < 12ms (Internal LAN).
+
+Fault Tolerance: System remains operational with up to (n−1)/2 node failures.
+
+Consistency Level: Strict Linearizability (CP in CAP Theorem).
+
+Lead Engineer: Rafael Ibaev
+
+ELTE University, Budapest
