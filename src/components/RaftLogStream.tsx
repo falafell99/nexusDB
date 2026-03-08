@@ -1,10 +1,23 @@
+import { useState } from "react";
 import type { RaftNode } from "@/hooks/useRaftSimulation";
+import { Archive } from "lucide-react";
 
 interface Props {
   nodes: RaftNode[];
 }
 
+const COMPACTION_THRESHOLD = 8;
+
 export default function RaftLogStream({ nodes }: Props) {
+  const [compactedNodes, setCompactedNodes] = useState<Record<string, number>>({});
+
+  const handleCompact = (nodeId: string, logLen: number) => {
+    setCompactedNodes(prev => ({
+      ...prev,
+      [nodeId]: (prev[nodeId] || 0) + Math.min(logLen, COMPACTION_THRESHOLD),
+    }));
+  };
+
   return (
     <div className="panel p-4 overflow-hidden">
       <div className="flex items-center justify-between mb-3">
@@ -22,6 +35,10 @@ export default function RaftLogStream({ nodes }: Props) {
       <div className="space-y-1.5">
         {nodes.map((node, i) => {
           const isLeader = node.state === "leader";
+          const compacted = compactedNodes[node.id] || 0;
+          const committedCount = node.log.filter(e => e.committed).length;
+          const canCompact = committedCount >= COMPACTION_THRESHOLD;
+
           return (
             <div key={node.id} className="flex items-start gap-2">
               {/* Node label */}
@@ -37,11 +54,26 @@ export default function RaftLogStream({ nodes }: Props) {
                     <span className="text-[7px] font-mono text-primary/60">LDR</span>
                   )}
                 </div>
+                {compacted > 0 && (
+                  <div className="flex items-center gap-0.5 mt-0.5 ml-3">
+                    <Archive className="w-2 h-2 text-muted-foreground/40" />
+                    <span className="text-[7px] font-mono text-muted-foreground/40">snap:{compacted}</span>
+                  </div>
+                )}
               </div>
 
               {/* WAL entries */}
               <div className="flex-1 overflow-x-auto scrollbar-none">
-                <div className="flex gap-[2px] min-w-0">
+                <div className="flex gap-[2px] min-w-0 items-center">
+                  {canCompact && (
+                    <button
+                      onClick={() => handleCompact(node.id, committedCount)}
+                      className="flex-shrink-0 px-1 py-[2px] text-[6px] font-mono border border-accent/30 text-accent/60 hover:text-accent hover:border-accent/60 transition-colors mr-1"
+                      title="Compact committed entries"
+                    >
+                      COMPACT
+                    </button>
+                  )}
                   {node.log.length === 0 ? (
                     <span className="text-[8px] font-mono text-muted-foreground/20 py-1">— empty WAL —</span>
                   ) : (
