@@ -11,6 +11,7 @@ import { Database } from "lucide-react";
 export default function Index() {
   const {
     nodes, pulses, events, partitioned, latencies,
+    rpsHistory, quorumHistory,
     quorumCount, quorumReached, currentTerm,
     killNode, reviveNode, togglePartition, writeValue,
     nodeLatencyOffsets, setNodeLatency,
@@ -58,7 +59,8 @@ export default function Index() {
           quorumReached={quorumReached}
           currentTerm={currentTerm}
           latencies={latencies}
-          events={events}
+          rpsHistory={rpsHistory}
+          quorumHistory={quorumHistory}
         />
 
         {/* Main Grid */}
@@ -68,7 +70,7 @@ export default function Index() {
             <ClusterTopology nodes={nodes} pulses={pulses} partitioned={partitioned} onNodeClick={handleNodeClick} />
           </div>
 
-          {/* Controls + Events */}
+          {/* Controls + WAL */}
           <div className="lg:col-span-1 space-y-3">
             <ClusterControls
               nodes={nodes}
@@ -80,12 +82,12 @@ export default function Index() {
               nodeLatencyOffsets={nodeLatencyOffsets}
               onSetNodeLatency={setNodeLatency}
             />
-            <EventLog events={events} />
+            <RaftLogStream nodes={nodes} />
           </div>
 
-          {/* Log Stream */}
+          {/* Events */}
           <div className="lg:col-span-1">
-            <RaftLogStream nodes={nodes} />
+            <EventLog events={events} />
           </div>
         </div>
 
