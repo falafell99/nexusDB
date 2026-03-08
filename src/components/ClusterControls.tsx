@@ -64,7 +64,7 @@ export default function ClusterControls({
           }`}
         >
           {partitioned ? <WifiOff className="w-3 h-3" /> : <Wifi className="w-3 h-3" />}
-          {partitioned ? "HEAL PARTITION [2|3]" : "SPLIT NETWORK [2|3]"}
+          {partitioned ? "HEAL PARTITION — RECONCILE" : "SPLIT NETWORK [N-01,N-02 | N-03,N-04,N-05]"}
         </button>
       </div>
 
