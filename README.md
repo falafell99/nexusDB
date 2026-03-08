@@ -7,7 +7,7 @@
 ### 🚀 Quick Links
 | 🌐 Live Demo | 📂 Repository | 🛠 Build Status |
 | :--- | :--- | :--- |
-| [**Open on Vercel**]([https://YOUR-VERCEL-LINK-HERE.vercel.app/](https://raft-overseer.vercel.app)) | [**Source Code**](https://github.com/rafael-ibayev/rafael-ibayev-portfolio) | ![Stable](https://img.shields.io/badge/Status-Stable-22c55e) |
+| [**Open on Vercel**](https://raft-overseer.vercel.app) | [**Source Code**](https://github.com/rafael-ibayev/rafael-ibayev-portfolio) | ![Stable](https://img.shields.io/badge/Status-Stable-22c55e) |
 
 ---
 
