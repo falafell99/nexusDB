@@ -34,7 +34,6 @@ export interface ClusterEvent {
   timestamp: number;
 }
 
-// Partition groups: "majority" = nodes c,d,e (indices 2,3,4), "minority" = nodes a,b (indices 0,1)
 export type PartitionGroup = "majority" | "minority";
 
 const NODE_NAMES = ["Node 01", "Node 02", "Node 03", "Node 04", "Node 05"];
@@ -62,20 +61,22 @@ const makeEventId = () => `evt-${++eventCounter}-${Date.now()}`;
 let pulseCounter = 0;
 const makePulseId = () => `pulse-${++pulseCounter}-${Date.now()}`;
 
-// Raft consensus simulation hook
 export function useRaftSimulation() {
   const [nodes, setNodes] = useState<RaftNode[]>(createInitialNodes);
   const [pulses, setPulses] = useState<HeartbeatPulse[]>([]);
   const [events, setEvents] = useState<ClusterEvent[]>([]);
   const [partitioned, setPartitioned] = useState(false);
   const [latencies, setLatencies] = useState<number[]>([12, 15, 11, 14, 13, 16, 12, 15, 11, 18]);
+  const [rpsHistory, setRpsHistory] = useState<number[]>(Array(20).fill(0));
+  const [quorumHistory, setQuorumHistory] = useState<number[]>(Array(20).fill(100));
   const [nodeLatencyOffsets, setNodeLatencyOffsets] = useState<Record<string, number>>({});
   const logIndexRef = useRef(0);
   const heartbeatRef = useRef<ReturnType<typeof setInterval>>();
+  const metricsRef = useRef<ReturnType<typeof setInterval>>();
   const minorityElectionRef = useRef<ReturnType<typeof setInterval>>();
   const partitionedRef = useRef(false);
+  const rpsCounterRef = useRef(0);
 
-  // Keep ref in sync
   useEffect(() => {
     partitionedRef.current = partitioned;
   }, [partitioned]);
@@ -88,10 +89,26 @@ export function useRaftSimulation() {
     setNodeLatencyOffsets(prev => ({ ...prev, [id]: ms }));
   }, []);
 
-  // Check if two nodes can communicate (not separated by partition)
   const canCommunicate = useCallback((idA: string, idB: string) => {
     if (!partitionedRef.current) return true;
     return getPartitionGroup(idA) === getPartitionGroup(idB);
+  }, []);
+
+  // RPS & quorum health tracking
+  useEffect(() => {
+    metricsRef.current = setInterval(() => {
+      const rps = rpsCounterRef.current;
+      rpsCounterRef.current = 0;
+      setRpsHistory(prev => [...prev.slice(1), rps]);
+
+      setNodes(curr => {
+        const alive = curr.filter(n => n.state !== "down").length;
+        const health = alive >= 3 ? 100 : Math.round((alive / 3) * 100);
+        setQuorumHistory(prev => [...prev.slice(1), health]);
+        return curr;
+      });
+    }, 1000);
+    return () => clearInterval(metricsRef.current);
   }, []);
 
   const sendHeartbeats = useCallback(() => {
@@ -119,31 +136,38 @@ export function useRaftSimulation() {
         setPulses(p => p.filter(pulse => !newPulses.find(np => np.id === pulse.id)));
       }, 600);
 
-      setLatencies(l => [...l.slice(1), Math.floor(8 + Math.random() * 15)]);
+      // Add latency based on avg node offset
+      const avgOffset = Object.values(nodeLatencyOffsets).reduce((a, b) => a + b, 0) / Math.max(Object.keys(nodeLatencyOffsets).length, 1);
+      setLatencies(l => [...l.slice(1), Math.floor(8 + Math.random() * 15 + avgOffset * 0.3)]);
+      rpsCounterRef.current += newPulses.length;
       return prev;
     });
-  }, [canCommunicate]);
+  }, [canCommunicate, nodeLatencyOffsets]);
+
+  // Dynamic heartbeat interval based on max latency offset
+  useEffect(() => {
+    const maxOffset = Math.max(0, ...Object.values(nodeLatencyOffsets));
+    const interval = 2000 + maxOffset * 2;
+    heartbeatRef.current = setInterval(sendHeartbeats, interval);
+    return () => clearInterval(heartbeatRef.current);
+  }, [sendHeartbeats, nodeLatencyOffsets]);
 
   const triggerElection = useCallback((groupFilter?: PartitionGroup, excludeId?: string) => {
     setNodes(prev => {
       let alive = prev.filter(n => n.state !== "down" && n.id !== excludeId);
-      
-      // If partitioned, only elect within the specified group
       if (partitionedRef.current && groupFilter) {
         alive = alive.filter(n => getPartitionGroup(n.id) === groupFilter);
       }
-
       if (alive.length === 0) return prev;
 
       const maxTerm = Math.max(...prev.map(n => n.term));
       const newTerm = maxTerm + 1;
       const candidate = alive[Math.floor(Math.random() * alive.length)];
       const groupSize = alive.length;
-      const majority = partitionedRef.current ? Math.ceil(5 / 2) : Math.ceil(prev.length / 2);
+      const majority = Math.ceil(5 / 2);
 
-      addEvent("election", `Term ${newTerm}: ${candidate.name} → CANDIDATE (group: ${groupSize})`);
+      addEvent("election", `[TERM ${newTerm}] Leader Election initiated — ${candidate.name} → CANDIDATE (${groupSize} nodes)`);
 
-      // Send vote requests only within reachable nodes
       const reachable = alive.filter(n => n.id !== candidate.id);
       const votePulses: HeartbeatPulse[] = reachable.map(n => ({
         id: makePulseId(),
@@ -155,25 +179,23 @@ export function useRaftSimulation() {
 
       setPulses(p => [...p, ...votePulses]);
       setTimeout(() => setPulses(p => p.filter(pulse => !votePulses.find(vp => vp.id === pulse.id))), 600);
+      rpsCounterRef.current += votePulses.length;
 
-      // Majority group (3 nodes) can win; minority (2 nodes) cannot
       const canWin = groupSize >= majority;
 
       if (canWin) {
         setTimeout(() => {
           setNodes(curr => curr.map(n => {
             if (n.state === "down") return n;
-            // Only update nodes in the same group
             if (partitionedRef.current && getPartitionGroup(n.id) !== getPartitionGroup(candidate.id)) return n;
             if (n.id === candidate.id) return { ...n, state: "leader" as NodeState, term: newTerm, votedFor: candidate.id };
             return { ...n, state: "follower" as NodeState, term: newTerm, votedFor: candidate.id };
           }));
-          addEvent("election", `Term ${newTerm}: ${candidate.name} elected LEADER (majority: ${groupSize}/${5})`);
+          addEvent("election", `[TERM ${newTerm}] ${candidate.name} elected LEADER — [QUORUM] Majority reached (${groupSize}/5)`);
         }, 1200);
       } else {
-        // Minority: election fails, stays candidate
         setTimeout(() => {
-          addEvent("election", `Term ${newTerm}: ${candidate.name} ELECTION FAILED — no quorum (${groupSize}/${5})`);
+          addEvent("election", `[TERM ${newTerm}] ${candidate.name} ELECTION FAILED — no quorum (${groupSize}/5)`);
         }, 1200);
       }
 
@@ -192,7 +214,7 @@ export function useRaftSimulation() {
       if (!node || node.state === "down") return prev;
 
       const wasLeader = node.state === "leader";
-      addEvent("nodeDown", `${node.name} offline`);
+      addEvent("nodeDown", `[${node.name.replace("Node ", "NODE ")}] Heartbeat timeout — node offline`);
 
       const updated = prev.map(n => n.id === nodeId ? { ...n, state: "down" as NodeState } : n);
       if (wasLeader) {
@@ -209,7 +231,7 @@ export function useRaftSimulation() {
       if (!node || node.state !== "down") return prev;
 
       const currentTerm = Math.max(...prev.map(n => n.term));
-      addEvent("nodeUp", `${node.name} online → FOLLOWER`);
+      addEvent("nodeUp", `[${node.name.replace("Node ", "NODE ")}] Node online → FOLLOWER`);
       return prev.map(n => n.id === nodeId ? { ...n, state: "follower" as NodeState, term: currentTerm } : n);
     });
   }, [addEvent]);
@@ -220,92 +242,47 @@ export function useRaftSimulation() {
       partitionedRef.current = next;
 
       if (next) {
-        // SPLIT: partition the cluster
         addEvent("partition", "Network split: [N-01,N-02] ↔ [N-03,N-04,N-05]");
-        
-        // Immediately update node states based on partition
-        setNodes(curr => {
-          const updated = curr.map(n => {
-            if (n.state === "down") return n;
-            // If current leader is in minority, it loses leadership
-            if (n.state === "leader" && MINORITY_IDS.has(n.id)) {
-              return { ...n, state: "candidate" as NodeState };
-            }
-            // If current leader is in majority, minority nodes become candidates
-            if (n.state === "follower" && MINORITY_IDS.has(n.id)) {
-              return { ...n, state: "candidate" as NodeState };
-            }
-            return n;
-          });
-          return updated;
-        });
-
-        // Trigger election in majority group
+        setNodes(curr => curr.map(n => {
+          if (n.state === "down") return n;
+          if (n.state === "leader" && MINORITY_IDS.has(n.id)) return { ...n, state: "candidate" as NodeState };
+          if (n.state === "follower" && MINORITY_IDS.has(n.id)) return { ...n, state: "candidate" as NodeState };
+          return n;
+        }));
         setTimeout(() => triggerElection("majority"), 1500);
-        
-        // Start minority failing elections repeatedly
         minorityElectionRef.current = setInterval(() => {
-          if (partitionedRef.current) {
-            triggerElection("minority");
-          }
+          if (partitionedRef.current) triggerElection("minority");
         }, 4000);
-        // First minority election attempt
         setTimeout(() => triggerElection("minority"), 2500);
-
       } else {
-        // HEAL: reconcile
         if (minorityElectionRef.current) {
           clearInterval(minorityElectionRef.current);
           minorityElectionRef.current = undefined;
         }
-
         addEvent("partition", "Partition healed — reconciling...");
-
-        // Find majority leader's log and sync to minority
         setNodes(curr => {
           const majorityLeader = curr.find(n => n.state === "leader" && MAJORITY_IDS.has(n.id));
           if (!majorityLeader) {
-            // Just trigger a fresh election
             setTimeout(() => triggerElection(), 1000);
             return curr;
           }
-
           const leaderLog = majorityLeader.log;
           const leaderTerm = majorityLeader.term;
-          
-          // Reconcile: minority nodes get the leader's log and become followers
           const reconciled = curr.map(n => {
             if (n.state === "down") return n;
             if (MINORITY_IDS.has(n.id)) {
-              return {
-                ...n,
-                state: "follower" as NodeState,
-                term: leaderTerm,
-                log: [...leaderLog],
-                votedFor: majorityLeader.id,
-              };
+              return { ...n, state: "follower" as NodeState, term: leaderTerm, log: [...leaderLog], votedFor: majorityLeader.id };
             }
             return n;
           });
-
-          // Show reconciliation pulses
           const reconPulses: HeartbeatPulse[] = [];
           curr.filter(n => MINORITY_IDS.has(n.id) && n.state !== "down").forEach(n => {
-            reconPulses.push({
-              id: makePulseId(),
-              from: majorityLeader.id,
-              to: n.id,
-              type: "appendEntries",
-              timestamp: Date.now(),
-            });
+            reconPulses.push({ id: makePulseId(), from: majorityLeader.id, to: n.id, type: "appendEntries", timestamp: Date.now() });
           });
           setPulses(p => [...p, ...reconPulses]);
           setTimeout(() => setPulses(p => p.filter(pulse => !reconPulses.find(rp => rp.id === pulse.id))), 1000);
-
-          const missingCount = leaderLog.length;
-          addEvent("reconcile", `${majorityLeader.name} → minority: synced ${missingCount} log entries`);
-          addEvent("reconcile", `Minority nodes [N-01, N-02] → FOLLOWER (term ${leaderTerm})`);
-
+          addEvent("reconcile", `[QUORUM] ${majorityLeader.name} → minority: synced ${leaderLog.length} WAL entries`);
+          addEvent("reconcile", `[NODE 01, NODE 02] Reconciled → FOLLOWER (term ${leaderTerm})`);
           return reconciled;
         });
       }
@@ -317,6 +294,7 @@ export function useRaftSimulation() {
     const command = `SET ${key} ${value}`;
     logIndexRef.current += 1;
     const idx = logIndexRef.current;
+    rpsCounterRef.current += 1;
 
     setNodes(prev => {
       const leader = prev.find(n => n.state === "leader");
@@ -324,8 +302,6 @@ export function useRaftSimulation() {
         addEvent("write", `REJECTED: No leader`);
         return prev;
       }
-
-      // If partitioned and leader is in minority, reject
       if (partitionedRef.current && MINORITY_IDS.has(leader.id)) {
         addEvent("write", `REJECTED: Leader in minority partition — no quorum`);
         return prev;
@@ -334,9 +310,8 @@ export function useRaftSimulation() {
       const currentTerm = leader.term;
       const entry: LogEntry = { index: idx, term: currentTerm, command, committed: false, timestamp: Date.now() };
 
-      addEvent("write", `${leader.name} ← ${command}`);
+      addEvent("write", `[${leader.name.replace("Node ", "NODE ")}] ← ${command}`);
 
-      // Only replicate to reachable followers
       const followers = prev.filter(n => n.state === "follower" && canCommunicate(leader.id, n.id));
       const replicatePulses: HeartbeatPulse[] = followers.map(f => ({
         id: makePulseId(),
@@ -348,15 +323,15 @@ export function useRaftSimulation() {
 
       setPulses(p => [...p, ...replicatePulses]);
       setTimeout(() => setPulses(p => p.filter(pulse => !replicatePulses.find(rp => rp.id === pulse.id))), 800);
+      rpsCounterRef.current += replicatePulses.length;
 
       setTimeout(() => {
         setNodes(curr => curr.map(n => {
           if (n.state === "down") return n;
-          // Only commit to reachable nodes
           if (partitionedRef.current && !canCommunicate(leader.id, n.id)) return n;
           return { ...n, log: [...n.log, { ...entry, committed: true }].slice(-20) };
         }));
-        addEvent("commit", `COMMITTED: ${command} [idx:${idx} term:${currentTerm}]`);
+        addEvent("commit", `[QUORUM] Majority reached for Index ${idx} — COMMITTED: ${command}`);
         setLatencies(l => [...l.slice(1), Math.floor(10 + Math.random() * 20)]);
       }, 800);
 
@@ -367,17 +342,11 @@ export function useRaftSimulation() {
     });
   }, [addEvent, canCommunicate]);
 
-  // Cleanup on unmount
   useEffect(() => {
     return () => {
       if (minorityElectionRef.current) clearInterval(minorityElectionRef.current);
     };
   }, []);
-
-  useEffect(() => {
-    heartbeatRef.current = setInterval(sendHeartbeats, 2000);
-    return () => clearInterval(heartbeatRef.current);
-  }, [sendHeartbeats]);
 
   const quorumCount = nodes.filter(n => n.state !== "down").length;
   const quorumReached = quorumCount >= 3;
@@ -385,6 +354,7 @@ export function useRaftSimulation() {
 
   return {
     nodes, pulses, events, partitioned, latencies,
+    rpsHistory, quorumHistory,
     quorumCount, quorumReached, currentTerm,
     killNode, reviveNode, togglePartition, writeValue,
     nodeLatencyOffsets, setNodeLatency,
