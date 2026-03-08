@@ -5,6 +5,7 @@ import ClusterControls from "@/components/ClusterControls";
 import LiveMetrics from "@/components/LiveMetrics";
 import EventLog from "@/components/EventLog";
 import RaftArchitecture from "@/components/RaftArchitecture";
+import ClientConsole from "@/components/ClientConsole";
 import { Database } from "lucide-react";
 
 export default function Index() {
