@@ -1,6 +1,6 @@
 import { useState } from "react";
 import type { RaftNode } from "@/hooks/useRaftSimulation";
-import { Power, PowerOff, WifiOff, Wifi, Send } from "lucide-react";
+import { Power, PowerOff, WifiOff, Wifi, Send, Zap, ZapOff } from "lucide-react";
 
 interface Props {
   nodes: RaftNode[];
@@ -11,11 +11,13 @@ interface Props {
   onWrite: (key: string, value: string) => void;
   nodeLatencyOffsets: Record<string, number>;
   onSetNodeLatency: (id: string, ms: number) => void;
+  chaosMode: boolean;
+  onToggleChaos: () => void;
 }
 
 export default function ClusterControls({
   nodes, partitioned, onKillNode, onReviveNode, onTogglePartition, onWrite,
-  nodeLatencyOffsets, onSetNodeLatency,
+  nodeLatencyOffsets, onSetNodeLatency, chaosMode, onToggleChaos,
 }: Props) {
   const [key, setKey] = useState("");
   const [value, setValue] = useState("");
@@ -31,6 +33,22 @@ export default function ClusterControls({
     <div className="panel p-4 space-y-4">
       <h2 className="text-xs font-semibold uppercase tracking-wider text-foreground">Chaos Engineering</h2>
 
+      {/* Chaos Monkey Toggle */}
+      <div>
+        <p className="text-[9px] font-mono text-muted-foreground mb-1.5 uppercase tracking-widest">Chaos Monkey</p>
+        <button
+          onClick={onToggleChaos}
+          className={`w-full flex items-center justify-center gap-2 p-2 border text-[10px] font-mono transition-colors ${
+            chaosMode
+              ? "border-accent/60 text-accent bg-accent/5 hover:bg-accent/10"
+              : "border-border text-muted-foreground hover:bg-muted hover:text-foreground"
+          }`}
+        >
+          {chaosMode ? <ZapOff className="w-3 h-3" /> : <Zap className="w-3 h-3" />}
+          {chaosMode ? "🐒 CHAOS ACTIVE — DISABLE" : "🐒 ENABLE CHAOS MONKEY"}
+        </button>
+      </div>
+
       {/* Node Failure */}
       <div>
         <p className="text-[9px] font-mono text-muted-foreground mb-1.5 uppercase tracking-widest">Node Failure</p>
@@ -39,12 +57,15 @@ export default function ClusterControls({
             <button
               key={node.id}
               onClick={() => node.state === "down" ? onReviveNode(node.id) : onKillNode(node.id)}
-              className={`flex flex-col items-center gap-0.5 p-1.5 border text-[9px] font-mono transition-colors ${
+              className={`flex flex-col items-center gap-0.5 p-1.5 border text-[9px] font-mono transition-colors relative ${
                 node.state === "down"
                   ? "border-destructive/40 text-destructive hover:bg-destructive/5"
                   : "border-border text-foreground hover:bg-muted"
               }`}
             >
+              {node.stressed && (
+                <span className="absolute -top-1 -right-1 w-2 h-2 bg-accent rounded-full animate-pulse" />
+              )}
               {node.state === "down" ? <PowerOff className="w-3 h-3" /> : <Power className="w-3 h-3" />}
               N-0{i + 1}
             </button>
@@ -64,7 +85,7 @@ export default function ClusterControls({
           }`}
         >
           {partitioned ? <WifiOff className="w-3 h-3" /> : <Wifi className="w-3 h-3" />}
-          {partitioned ? "HEAL PARTITION — RECONCILE" : "SPLIT NETWORK [N-01,N-02 | N-03,N-04,N-05]"}
+          {partitioned ? "HEAL PARTITION — RECONCILE" : "SPLIT NETWORK"}
         </button>
       </div>
 
@@ -74,7 +95,9 @@ export default function ClusterControls({
         <div className="space-y-1.5">
           {nodes.map((node, i) => (
             <div key={node.id} className="flex items-center gap-2">
-              <span className="text-[9px] font-mono text-muted-foreground w-8 flex-shrink-0">N-0{i + 1}</span>
+              <span className={`text-[9px] font-mono w-8 flex-shrink-0 ${node.stressed ? "text-accent" : "text-muted-foreground"}`}>
+                N-0{i + 1}
+              </span>
               <input
                 type="range"
                 min={0}
