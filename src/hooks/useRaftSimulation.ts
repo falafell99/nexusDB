@@ -38,12 +38,6 @@ export type PartitionGroup = "majority" | "minority";
 
 const NODE_NAMES = ["Node 01", "Node 02", "Node 03", "Node 04", "Node 05"];
 const NODE_IDS = ["a", "b", "c", "d", "e"];
-const MINORITY_IDS = new Set(["a", "b"]);
-const MAJORITY_IDS = new Set(["c", "d", "e"]);
-
-function getPartitionGroup(id: string): PartitionGroup {
-  return MINORITY_IDS.has(id) ? "minority" : "majority";
-}
 
 function createInitialNodes(): RaftNode[] {
   return NODE_IDS.map((id, i) => ({
@@ -70,16 +64,29 @@ export function useRaftSimulation() {
   const [rpsHistory, setRpsHistory] = useState<number[]>(Array(20).fill(0));
   const [quorumHistory, setQuorumHistory] = useState<number[]>(Array(20).fill(100));
   const [nodeLatencyOffsets, setNodeLatencyOffsets] = useState<Record<string, number>>({});
+  const [minorityIds, setMinorityIds] = useState<Set<string>>(new Set(["a", "b"]));
+  const [majorityIds, setMajorityIds] = useState<Set<string>>(new Set(["c", "d", "e"]));
   const logIndexRef = useRef(0);
   const heartbeatRef = useRef<ReturnType<typeof setInterval>>();
   const metricsRef = useRef<ReturnType<typeof setInterval>>();
   const minorityElectionRef = useRef<ReturnType<typeof setInterval>>();
   const partitionedRef = useRef(false);
   const rpsCounterRef = useRef(0);
+  const minorityIdsRef = useRef(minorityIds);
+  const majorityIdsRef = useRef(majorityIds);
 
-  useEffect(() => {
-    partitionedRef.current = partitioned;
-  }, [partitioned]);
+  useEffect(() => { partitionedRef.current = partitioned; }, [partitioned]);
+  useEffect(() => { minorityIdsRef.current = minorityIds; }, [minorityIds]);
+  useEffect(() => { majorityIdsRef.current = majorityIds; }, [majorityIds]);
+
+  const setPartitionGroups = useCallback((groups: { minority: Set<string>; majority: Set<string> }) => {
+    setMinorityIds(groups.minority);
+    setMajorityIds(groups.majority);
+  }, []);
+
+  const getPartitionGroup = useCallback((id: string): PartitionGroup => {
+    return minorityIdsRef.current.has(id) ? "minority" : "majority";
+  }, []);
 
   const addEvent = useCallback((type: ClusterEvent["type"], message: string) => {
     setEvents(prev => [{ id: makeEventId(), type, message, timestamp: Date.now() }, ...prev].slice(0, 50));
@@ -92,15 +99,13 @@ export function useRaftSimulation() {
   const canCommunicate = useCallback((idA: string, idB: string) => {
     if (!partitionedRef.current) return true;
     return getPartitionGroup(idA) === getPartitionGroup(idB);
-  }, []);
+  }, [getPartitionGroup]);
 
-  // RPS & quorum health tracking
   useEffect(() => {
     metricsRef.current = setInterval(() => {
       const rps = rpsCounterRef.current;
       rpsCounterRef.current = 0;
       setRpsHistory(prev => [...prev.slice(1), rps]);
-
       setNodes(curr => {
         const alive = curr.filter(n => n.state !== "down").length;
         const health = alive >= 3 ? 100 : Math.round((alive / 3) * 100);
@@ -115,28 +120,16 @@ export function useRaftSimulation() {
     setNodes(prev => {
       const leaders = prev.filter(n => n.state === "leader");
       if (leaders.length === 0) return prev;
-
       const newPulses: HeartbeatPulse[] = [];
       leaders.forEach(leader => {
         prev.forEach(n => {
           if (n.id !== leader.id && n.state !== "down" && canCommunicate(leader.id, n.id)) {
-            newPulses.push({
-              id: makePulseId(),
-              from: leader.id,
-              to: n.id,
-              type: "heartbeat",
-              timestamp: Date.now(),
-            });
+            newPulses.push({ id: makePulseId(), from: leader.id, to: n.id, type: "heartbeat", timestamp: Date.now() });
           }
         });
       });
-
       setPulses(p => [...p, ...newPulses]);
-      setTimeout(() => {
-        setPulses(p => p.filter(pulse => !newPulses.find(np => np.id === pulse.id)));
-      }, 600);
-
-      // Add latency based on avg node offset
+      setTimeout(() => setPulses(p => p.filter(pulse => !newPulses.find(np => np.id === pulse.id))), 600);
       const avgOffset = Object.values(nodeLatencyOffsets).reduce((a, b) => a + b, 0) / Math.max(Object.keys(nodeLatencyOffsets).length, 1);
       setLatencies(l => [...l.slice(1), Math.floor(8 + Math.random() * 15 + avgOffset * 0.3)]);
       rpsCounterRef.current += newPulses.length;
@@ -144,7 +137,6 @@ export function useRaftSimulation() {
     });
   }, [canCommunicate, nodeLatencyOffsets]);
 
-  // Dynamic heartbeat interval based on max latency offset
   useEffect(() => {
     const maxOffset = Math.max(0, ...Object.values(nodeLatencyOffsets));
     const interval = 2000 + maxOffset * 2;
@@ -170,19 +162,13 @@ export function useRaftSimulation() {
 
       const reachable = alive.filter(n => n.id !== candidate.id);
       const votePulses: HeartbeatPulse[] = reachable.map(n => ({
-        id: makePulseId(),
-        from: candidate.id,
-        to: n.id,
-        type: "voteRequest" as const,
-        timestamp: Date.now(),
+        id: makePulseId(), from: candidate.id, to: n.id, type: "voteRequest" as const, timestamp: Date.now(),
       }));
-
       setPulses(p => [...p, ...votePulses]);
       setTimeout(() => setPulses(p => p.filter(pulse => !votePulses.find(vp => vp.id === pulse.id))), 600);
       rpsCounterRef.current += votePulses.length;
 
       const canWin = groupSize >= majority;
-
       if (canWin) {
         setTimeout(() => {
           setNodes(curr => curr.map(n => {
@@ -206,16 +192,14 @@ export function useRaftSimulation() {
         return { ...n, term: newTerm };
       });
     });
-  }, [addEvent]);
+  }, [addEvent, getPartitionGroup]);
 
   const killNode = useCallback((nodeId: string) => {
     setNodes(prev => {
       const node = prev.find(n => n.id === nodeId);
       if (!node || node.state === "down") return prev;
-
       const wasLeader = node.state === "leader";
       addEvent("nodeDown", `[${node.name.replace("Node ", "NODE ")}] Heartbeat timeout — node offline`);
-
       const updated = prev.map(n => n.id === nodeId ? { ...n, state: "down" as NodeState } : n);
       if (wasLeader) {
         const group = partitionedRef.current ? getPartitionGroup(nodeId) : undefined;
@@ -223,13 +207,12 @@ export function useRaftSimulation() {
       }
       return updated;
     });
-  }, [addEvent, triggerElection]);
+  }, [addEvent, triggerElection, getPartitionGroup]);
 
   const reviveNode = useCallback((nodeId: string) => {
     setNodes(prev => {
       const node = prev.find(n => n.id === nodeId);
       if (!node || node.state !== "down") return prev;
-
       const currentTerm = Math.max(...prev.map(n => n.term));
       addEvent("nodeUp", `[${node.name.replace("Node ", "NODE ")}] Node online → FOLLOWER`);
       return prev.map(n => n.id === nodeId ? { ...n, state: "follower" as NodeState, term: currentTerm } : n);
@@ -242,11 +225,14 @@ export function useRaftSimulation() {
       partitionedRef.current = next;
 
       if (next) {
-        addEvent("partition", "Network split: [N-01,N-02] ↔ [N-03,N-04,N-05]");
+        const minNames = NODE_IDS.filter(id => minorityIdsRef.current.has(id)).map((_, i) => `N-0${NODE_IDS.indexOf(_) + 1}`).join(",");
+        const majNames = NODE_IDS.filter(id => majorityIdsRef.current.has(id)).map((_, i) => `N-0${NODE_IDS.indexOf(_) + 1}`).join(",");
+        addEvent("partition", `Network split: [${minNames}] ↔ [${majNames}]`);
         setNodes(curr => curr.map(n => {
           if (n.state === "down") return n;
-          if (n.state === "leader" && MINORITY_IDS.has(n.id)) return { ...n, state: "candidate" as NodeState };
-          if (n.state === "follower" && MINORITY_IDS.has(n.id)) return { ...n, state: "candidate" as NodeState };
+          if ((n.state === "leader" || n.state === "follower") && minorityIdsRef.current.has(n.id)) {
+            return { ...n, state: "candidate" as NodeState };
+          }
           return n;
         }));
         setTimeout(() => triggerElection("majority"), 1500);
@@ -261,28 +247,27 @@ export function useRaftSimulation() {
         }
         addEvent("partition", "Partition healed — reconciling...");
         setNodes(curr => {
-          const majorityLeader = curr.find(n => n.state === "leader" && MAJORITY_IDS.has(n.id));
-          if (!majorityLeader) {
+          const majorLeader = curr.find(n => n.state === "leader" && majorityIdsRef.current.has(n.id));
+          if (!majorLeader) {
             setTimeout(() => triggerElection(), 1000);
             return curr;
           }
-          const leaderLog = majorityLeader.log;
-          const leaderTerm = majorityLeader.term;
+          const leaderLog = majorLeader.log;
+          const leaderTerm = majorLeader.term;
           const reconciled = curr.map(n => {
             if (n.state === "down") return n;
-            if (MINORITY_IDS.has(n.id)) {
-              return { ...n, state: "follower" as NodeState, term: leaderTerm, log: [...leaderLog], votedFor: majorityLeader.id };
+            if (minorityIdsRef.current.has(n.id)) {
+              return { ...n, state: "follower" as NodeState, term: leaderTerm, log: [...leaderLog], votedFor: majorLeader.id };
             }
             return n;
           });
           const reconPulses: HeartbeatPulse[] = [];
-          curr.filter(n => MINORITY_IDS.has(n.id) && n.state !== "down").forEach(n => {
-            reconPulses.push({ id: makePulseId(), from: majorityLeader.id, to: n.id, type: "appendEntries", timestamp: Date.now() });
+          curr.filter(n => minorityIdsRef.current.has(n.id) && n.state !== "down").forEach(n => {
+            reconPulses.push({ id: makePulseId(), from: majorLeader.id, to: n.id, type: "appendEntries", timestamp: Date.now() });
           });
           setPulses(p => [...p, ...reconPulses]);
           setTimeout(() => setPulses(p => p.filter(pulse => !reconPulses.find(rp => rp.id === pulse.id))), 1000);
-          addEvent("reconcile", `[QUORUM] ${majorityLeader.name} → minority: synced ${leaderLog.length} WAL entries`);
-          addEvent("reconcile", `[NODE 01, NODE 02] Reconciled → FOLLOWER (term ${leaderTerm})`);
+          addEvent("reconcile", `[QUORUM] ${majorLeader.name} → minority: synced ${leaderLog.length} WAL entries`);
           return reconciled;
         });
       }
@@ -302,25 +287,19 @@ export function useRaftSimulation() {
         addEvent("write", `REJECTED: No leader`);
         return prev;
       }
-      if (partitionedRef.current && MINORITY_IDS.has(leader.id)) {
+      if (partitionedRef.current && minorityIdsRef.current.has(leader.id)) {
         addEvent("write", `REJECTED: Leader in minority partition — no quorum`);
         return prev;
       }
 
       const currentTerm = leader.term;
       const entry: LogEntry = { index: idx, term: currentTerm, command, committed: false, timestamp: Date.now() };
-
       addEvent("write", `[${leader.name.replace("Node ", "NODE ")}] ← ${command}`);
 
       const followers = prev.filter(n => n.state === "follower" && canCommunicate(leader.id, n.id));
       const replicatePulses: HeartbeatPulse[] = followers.map(f => ({
-        id: makePulseId(),
-        from: leader.id,
-        to: f.id,
-        type: "appendEntries" as const,
-        timestamp: Date.now(),
+        id: makePulseId(), from: leader.id, to: f.id, type: "appendEntries" as const, timestamp: Date.now(),
       }));
-
       setPulses(p => [...p, ...replicatePulses]);
       setTimeout(() => setPulses(p => p.filter(pulse => !replicatePulses.find(rp => rp.id === pulse.id))), 800);
       rpsCounterRef.current += replicatePulses.length;
@@ -358,5 +337,6 @@ export function useRaftSimulation() {
     quorumCount, quorumReached, currentTerm,
     killNode, reviveNode, togglePartition, writeValue,
     nodeLatencyOffsets, setNodeLatency,
+    minorityIds, majorityIds, setPartitionGroups,
   };
 }
