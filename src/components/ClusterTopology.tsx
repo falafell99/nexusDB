@@ -75,9 +75,9 @@ export default function ClusterTopology({ nodes, pulses, onNodeClick }: Props) {
         const x = from.x + (to.x - from.x) * progress;
         const y = from.y + (to.y - from.y) * progress;
 
-        const color = pulse.type === "heartbeat" ? "#64748b" :
+        const color = pulse.type === "heartbeat" ? "#94a3b8" :
           pulse.type === "appendEntries" ? "#22c55e" :
-          pulse.type === "voteRequest" ? "#f59e0b" : "#64748b";
+          pulse.type === "voteRequest" ? "#f59e0b" : "#94a3b8";
 
         ctx.beginPath();
         ctx.arc(x, y, 2, 0, Math.PI * 2);
