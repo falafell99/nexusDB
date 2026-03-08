@@ -17,7 +17,7 @@ const NODE_POSITIONS = [
 
 const STATE_COLORS: Record<string, string> = {
   leader: "#22c55e",
-  follower: "#64748b",
+  follower: "#4a7abf",
   candidate: "#f59e0b",
   down: "#ef4444",
 };
